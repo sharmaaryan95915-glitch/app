@@ -1,33 +1,90 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { LogBox } from "react-native";
+import { LogBox, View } from "react-native";
+import { useFonts } from "expo-font";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { AuthProvider, useAuth } from "@/src/context/AuthContext";
+import { ToastProvider } from "@/src/components/Toast";
+import { colors } from "@/src/theme";
 
-
-// Disable logbox errors etc so that users can see the app
-// and agent works as expected.
-LogBox.ignoreAllLogs(true)
-
-// Keep the native splash visible from cold start until icon fonts register.
-// Required because @expo/vector-icons' componentDidMount fallback fires
-// Font.loadAsync against a broken vendor path if any <Icon> mounts before
-// the family is registered — which throws on Android Expo Go.
+LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const [loaded, error] = useIconFonts();
+function RootNavigator() {
+  const { user, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    if (loaded || error) {
+    if (loading) return;
+    const seg0 = segments[0];
+    const inAuth = seg0 === "(auth)";
+    const onLanding = seg0 === undefined || seg0 === "index";
+
+    if (!user && !inAuth && !onLanding) {
+      router.replace("/(auth)/login");
+    } else if (user && (inAuth || onLanding)) {
+      router.replace("/(tabs)");
+    }
+  }, [user, loading, segments, router]);
+
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="wallet/deposit" options={{ presentation: "card" }} />
+      <Stack.Screen name="wallet/withdraw" options={{ presentation: "card" }} />
+      <Stack.Screen name="wallet/history" options={{ presentation: "card" }} />
+      <Stack.Screen name="admin/index" options={{ presentation: "card" }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  const [iconsLoaded, iconsError] = useIconFonts();
+  const [fontsLoaded, fontsError] = useFonts({
+    "Fraunces-Bold": require("../assets/fonts/Fraunces-Bold.ttf"),
+    "Fraunces-SemiBold": require("../assets/fonts/Fraunces-SemiBold.ttf"),
+    "Geist-Regular": require("../assets/fonts/Geist-Regular.ttf"),
+    "Geist-Medium": require("../assets/fonts/Geist-Medium.ttf"),
+    "Geist-SemiBold": require("../assets/fonts/Geist-SemiBold.ttf"),
+  });
+
+  const iconsReady = iconsLoaded || iconsError;
+  const fontsReady = fontsLoaded || fontsError;
+
+  useEffect(() => {
+    if (iconsReady && fontsReady) {
       SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [iconsReady, fontsReady]);
 
-  // If the CDN is unreachable we fall through on error rather than wedging
-  // the app — icons will tofu, but the app still boots.
-  if (!loaded && !error) return null;
+  if (!iconsReady || !fontsReady) return null;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
+      <KeyboardProvider>
+      <SafeAreaProvider>
+        <BottomSheetModalProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <StatusBar style="light" />
+              <View style={{ flex: 1, backgroundColor: colors.surface }}>
+                <RootNavigator />
+              </View>
+            </ToastProvider>
+          </AuthProvider>
+        </BottomSheetModalProvider>
+      </SafeAreaProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
+  );
 }
