@@ -36,7 +36,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           entering={FadeInUp.springify().damping(18)}
           exiting={FadeOutUp}
           style={[styles.wrap, { top: insets.top + 8 }]}
-          pointerEvents="none"
           testID="toast-message"
         >
           <View style={[styles.toast, { borderColor: accent }]}>
@@ -50,7 +49,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: "absolute", left: spacing.lg, right: spacing.lg, zIndex: 9999 },
+  wrap: { position: "absolute", left: spacing.lg, right: spacing.lg, zIndex: 9999, pointerEvents: "none" },
   toast: {
     flexDirection: "row",
     alignItems: "center",

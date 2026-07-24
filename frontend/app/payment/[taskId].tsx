@@ -124,7 +124,7 @@ export default function Payment() {
         {/* QR with green profit pulse */}
         <Text style={styles.step}>Step 1 · Scan & pay via UPI</Text>
         <View style={styles.qrCard}>
-          <Animated.View style={[styles.pulseRing, pulseStyle]} pointerEvents="none" />
+          <Animated.View style={[styles.pulseRing, pulseStyle]} />
           <View style={styles.qrFrame}>
             {qr ? (
               <Image source={{ uri: qr }} style={styles.qr} contentFit="contain" testID="payment-qr" />
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   sGet: { color: colors.brand, fontFamily: fonts.display, fontSize: 26 },
   step: { color: colors.brand, fontFamily: fonts.semibold, fontSize: 13, marginTop: spacing.xl, marginBottom: spacing.md },
   qrCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.xl, alignItems: "center" },
-  pulseRing: { position: "absolute", top: spacing.lg, width: 220, height: 220, borderRadius: 24, borderWidth: 3, borderColor: colors.success },
+  pulseRing: { position: "absolute", top: spacing.lg, width: 220, height: 220, borderRadius: 24, borderWidth: 3, borderColor: colors.success, pointerEvents: "none" },
   qrFrame: { width: 210, height: 210, borderRadius: radius.md, backgroundColor: "#fff", padding: 10, alignItems: "center", justifyContent: "center" },
   qr: { width: "100%", height: "100%" },
   qrPh: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },

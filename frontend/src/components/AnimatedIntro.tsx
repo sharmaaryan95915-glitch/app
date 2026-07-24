@@ -51,7 +51,7 @@ export function AnimatedIntro({ onDone }: { onDone: () => void }) {
   const shimmerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -120 + shimmer.value * 240 }] }));
 
   return (
-    <Animated.View style={[styles.root, rootStyle]} pointerEvents="none" testID="intro-animation">
+    <Animated.View style={[styles.root, rootStyle]} testID="intro-animation">
       <LinearGradient colors={["#161206", colors.surface, "#0c0c0c"]} style={StyleSheet.absoluteFill} />
       <View style={styles.center}>
         <Animated.View style={[styles.ring, ringStyle]} />
@@ -76,7 +76,7 @@ export function AnimatedIntro({ onDone }: { onDone: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, zIndex: 1000, alignItems: "center", justifyContent: "center" },
+  root: { ...StyleSheet.absoluteFillObject, zIndex: 1000, alignItems: "center", justifyContent: "center", pointerEvents: "none" },
   center: { alignItems: "center" },
   ring: { position: "absolute", top: -18, width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: colors.brand },
   logo: {
