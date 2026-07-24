@@ -1,0 +1,169 @@
+{
+  "app_name": "Victory Pay",
+  "personality": "6 Glass / Luxe DARK",
+  "personality_one_liner": "A cinematic, expensive, and restrained premium rewards wallet built on deep darkness, antique gold, and frosted glass.",
+  "color": {
+    "surface": "#121212",
+    "onSurface": "#FFFFFF",
+    "surfaceSecondary": "#1E1E1E",
+    "onSurfaceSecondary": "#E0E0E0",
+    "surfaceTertiary": "#2C2C2C",
+    "onSurfaceTertiary": "#BDBDBD",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#121212",
+    "brand": "#D4AF37",
+    "brandPrimary": "#D4AF37",
+    "onBrandPrimary": "#121212",
+    "brandSecondary": "#AA8C2C",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#4A3E15",
+    "onBrandTertiary": "#E2C86F",
+    "success": "#059669",
+    "onSuccess": "#FFFFFF",
+    "warning": "#D97706",
+    "onWarning": "#FFFFFF",
+    "error": "#DC2626",
+    "onError": "#FFFFFF",
+    "info": "#0D9488",
+    "onInfo": "#FFFFFF",
+    "border": "#2C2C2C",
+    "borderStrong": "#4A4A4A",
+    "divider": "#1E1E1E"
+  },
+  "typography": {
+    "displayFontFamily": "Fraunces",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous magazine-like rhythms. Avoid dense, utility-first spacing. Empty areas build the premium feel.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use blur for elevated surfaces (bottom tab bar, sticky headers over scrolling content, hero cards, bottom sheets).",
+      "Pair blur with a translucent tinted base underneath (≥75% opacity of surface) to guarantee foreground readability.",
+      "Use glass for 'Premium' status surfaces to add perceived value."
+    ],
+    "dont's": [
+      "Never apply glass to form fields, body text regions, or the entire screen.",
+      "Do not leave text unreadable on glass over high-contrast imagery.",
+      "Do not use heavy drop shadows."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home",
+      "purpose": "Balance-first premium dashboard.",
+      "states": {
+        "loading": "Centered spinner on Midnight black.",
+        "empty": "Empty state not applicable for Home (balance is 0 initially).",
+        "error": "Readable message on deep error tint with a retry button."
+      },
+      "layout": "Root uses safe area. Top features a cinematic hero card (glass over abstract gold/green imagery) highlighting the Total Balance in Fraunces. Below the card: two primary glass buttons (Deposit, Withdraw). Followed by a horizontal scroll of 'Quick Stats' (Total Earned, Active Plans, Referrals). The bottom half is a 'Recent Transactions' list. The bottom tab bar is frosted glass."
+    },
+    {
+      "name": "Reward Plans",
+      "purpose": "Showcase premium investment plans from ₹500 to ₹10,000.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Illustration of locked vaults with 'No active plans'.",
+        "error": "Retry loading plans."
+      },
+      "layout": "Sticky glass header. Two sections: 'Active Plans' (horizontal scroll of premium glass cards) and 'Available Plans' (vertical list of large, expansive cards). Each card features the plan amount prominently in Fraunces, emphasizing the 4% reward rate, with a tinted brandTertiary CTA."
+    },
+    {
+      "name": "Referrals",
+      "purpose": "Encourage users to share the app for a ₹300 bonus.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Illustration of a network/connection with 'Invite your first friend'.",
+        "error": "Retry loading referral data."
+      },
+      "layout": "Large hero section showing total referral earnings. A prominent 'Share Code' section wrapped in a borderStrong container. Below, a list of 'Invited Friends' with initials avatars in tinted circles, showing their sign-up status."
+    },
+    {
+      "name": "Wallet / Deposit",
+      "purpose": "Manual UPI deposit flow.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "N/A.",
+        "error": "Retry loading UPI details."
+      },
+      "layout": "Stack navigation. A clean, single-column form. Top shows the Admin's QR Code in a centered, softly rounded card, followed by a copyable UPI ID. Below is the input form for Amount and 12-digit UPI Reference Number. Sticky 'Submit' button at the bottom inside KeyboardAvoidingView."
+    },
+    {
+      "name": "Admin Panel",
+      "purpose": "Dashboard to approve/reject deposits and withdrawals.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Illustration with 'No pending requests'.",
+        "error": "Retry loading requests."
+      },
+      "layout": "Utility-focused structure but maintaining the Luxe palette. Top segmented control (glass) to switch between 'Deposits' and 'Withdrawals'. List items show user details, amount, reference number, and two actions: Approve (success) or Reject (error)."
+    }
+  ],
+  "images": {
+    "logo": {
+      "url": "https://images.unsplash.com/photo-1714548474550-d533620651c7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwZ29sZCUyMFYlMjBsb2dvJTIwdHJhbnNwYXJlbnR8ZW58MHx8fHwxNzg0ODc3MDUxfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Victory Pay Premium Gold Logo"
+    },
+    "home_hero_bg": {
+      "url": "https://images.unsplash.com/photo-1761437855740-c894da924d79?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBncmVlbiUyMGdvbGQlMjBnZW9tZXRyaWMlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NDg3NzA1MXww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1761437855740-c894da924d79?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBncmVlbiUyMGdvbGQlMjBnZW9tZXRyaWMlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NDg3NzA1MXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract gold and dark lines texture for hero card background"
+    },
+    "empty_wallet": {
+      "url": "https://images.pexels.com/photos/6289030/pexels-photo-6289030.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Empty wallet illustration for empty states"
+    },
+    "qr_code_placeholder": {
+      "url": "https://images.pexels.com/photos/278430/pexels-photo-278430.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "UPI QR Code Placeholder"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the 6 Glass / Luxe DARK personality. Do NOT use pure black backgrounds; stick to the Midnight Black (#121212) and Charcoal Slate (#1E1E1E) surfaces.",
+    "BANNED: Any shade of blue, indigo, purple, or lavender. The accent color is exclusively Antique Gold (#D4AF37).",
+    "Always apply a vertical gradient scrim (transparent to ≥75% surfaceInverse) over the home_hero_bg image before overlaying text.",
+    "For the manual UPI flow, ensure the UPI ID is easily copyable (include a copy icon button next to it).",
+    "Keep the primary CTAs (e.g., Deposit, Withdraw, Submit, Approve) sticky at the bottom of the screen with proper safe area padding.",
+    "Implement tactile haptics on primary actions (deposits, plan activation, copying the UPI ID/Referral code). Make sure to include the `haptics` object mapped to events in the final JSON.",
+    "Admin actions (Approve/Reject) should be distinct. Use the success (#059669) and error (#DC2626) tokens for these buttons respectively.",
+    "Use Fraunces (serif) purely for large numbers (balances) and headers, and Geist (sans-serif) for all other UI text, forms, and metadata."
+  ]
+}
