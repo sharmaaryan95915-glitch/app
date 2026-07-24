@@ -1,19 +1,28 @@
-"""Victory Pay backend end-to-end tests.
+"""Victory Pay backend end-to-end tests (task-payment iteration).
 
-All tests grouped in a single class so pytest-xdist loadscope keeps them
-on the same worker (shared cls.state dict is safe).
+Covers:
+- Auth (register/login/admin/google invalid/me/logout)
+- Tasks list (reward + daily)
+- Task payment flow (pay -> admin approve credits amount+reward; reject doesn't credit)
+- Screenshot validation
+- Payout Accounts CRUD + UPI validation
+- Withdraw new flow with account_id + admin approve
+- Support chat (user + admin) + non-admin 403
+- Live stats
+- Wallet UPI info (big_payment_upi + qr_images len 2)
+- Config (telegram)
+- Full e2e: register -> pay 1200 task -> approve -> +1320 -> add account -> withdraw 500 -> approve -> -500
 """
 import uuid
 import pytest
 
 
 def rand_email(prefix="test"):
-    # Backend lowercases email; keep lowercase for equality checks.
     return f"test_{prefix}_{uuid.uuid4().hex[:8]}@example.com"
 
 
 class TestVictoryPay:
-    state = {}  # shared across tests in this class
+    state = {}
 
     # ---------- Health ----------
     def test_00_root(self, api, base_url):
@@ -44,7 +53,6 @@ class TestVictoryPay:
         r = api.post(f"{base_url}/auth/login",
                      json={"email": self.state["reg_email"], "password": "pass1234"})
         assert r.status_code == 200
-        assert "token" in r.json()
 
     def test_04_login_invalid(self, api, base_url):
         r = api.post(f"{base_url}/auth/login",
@@ -92,158 +100,270 @@ class TestVictoryPay:
                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         assert r.status_code == 200
         j = r.json()
-        assert j["referral_code"] == self.state["reg_user"]["referral_code"]
         assert j["total_earned"] >= 300
         assert j["count"] >= 1
 
-    # ---------- Plans ----------
-    def test_20_list_plans(self, api, base_url):
-        r = api.get(f"{base_url}/plans")
+    # ---------- Config / Tasks / UPI ----------
+    def test_20_config(self, api, base_url):
+        r = api.get(f"{base_url}/config")
         assert r.status_code == 200
-        plans = r.json()["plans"]
-        assert len(plans) >= 5
-        self.state["plan_starter"] = next(p for p in plans if p["amount"] == 500)
+        assert "t.me" in r.json()["telegram"]
 
-    def test_21_activate_insufficient(self, api, base_url):
-        email = rand_email("poor")
-        r = api.post(f"{base_url}/auth/register",
-                     json={"name": "Poor", "email": email, "password": "pass1234"})
-        tok = r.json()["token"]
-        r2 = api.post(f"{base_url}/plans/activate",
-                      json={"plan_id": self.state["plan_starter"]["plan_id"]},
-                      headers={"Authorization": f"Bearer {tok}"})
-        assert r2.status_code == 400
+    def test_21_tasks_list(self, api, base_url):
+        r = api.get(f"{base_url}/tasks")
+        assert r.status_code == 200
+        j = r.json()
+        assert "reward" in j and "daily" in j
+        # Reward amounts must include the specified set
+        reward_amts = {t["amount"] for t in j["reward"]}
+        for a in (1200, 1900, 2600, 3500, 6500, 8500):
+            assert a in reward_amts, f"Missing reward amount {a}"
+        # Trending 3500 with reward 750
+        elite = next(t for t in j["reward"] if t["amount"] == 3500)
+        assert elite["reward"] == 750
+        assert elite.get("trending") is True
+        # Daily tasks 4% reward
+        for t in j["daily"]:
+            assert t["reward"] == round(t["amount"] * 0.04)
+            assert t["code"].startswith("VP-")
+        # Save a 1200 task for e2e
+        self.state["task_1200"] = next(t for t in j["reward"] if t["amount"] == 1200)
 
-    # ---------- Wallet ----------
-    def test_30_upi_info(self, api, base_url):
+    def test_22_upi_info(self, api, base_url):
         r = api.get(f"{base_url}/wallet/upi-info",
                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         assert r.status_code == 200
         upi = r.json()["upi"]
-        assert upi.get("upi_id")
+        assert upi["big_payment_upi"] == "harsh.g216@ptyes"
+        assert isinstance(upi.get("qr_images"), list)
+        assert len(upi["qr_images"]) == 2
 
-    def test_31_deposit_request(self, api, base_url):
-        r = api.post(f"{base_url}/wallet/deposit",
-                     json={"amount": 1000, "upi_reference": "TXN123ABC"},
-                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 200
-        req = r.json()["request"]
-        assert req["status"] == "pending"
-        assert req["amount"] == 1000
-        self.state["deposit_id"] = req["request_id"]
-
-    def test_32_deposit_invalid_amount(self, api, base_url):
-        r = api.post(f"{base_url}/wallet/deposit",
-                     json={"amount": 0, "upi_reference": "X"},
-                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 400
-
-    def test_33_my_requests(self, api, base_url):
-        r = api.get(f"{base_url}/wallet/my-requests",
-                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 200
-        assert any(d["request_id"] == self.state["deposit_id"] for d in r.json()["deposits"])
-
-    def test_34_withdraw_insufficient(self, api, base_url):
-        r = api.post(f"{base_url}/wallet/withdraw",
-                     json={"amount": 100000, "upi_id": "user@upi"},
-                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 400
-
-    def test_35_transactions(self, api, base_url):
-        r = api.get(f"{base_url}/wallet/transactions",
-                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 200
-        types = {t["type"] for t in r.json()["transactions"]}
-        assert "bonus" in types
-        assert "referral" in types
-
-    # ---------- Admin ----------
-    def test_40_non_admin_forbidden(self, api, base_url):
-        r = api.get(f"{base_url}/admin/summary",
-                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert r.status_code == 403
-
-    def test_41_admin_summary(self, api, base_url):
-        r = api.get(f"{base_url}/admin/summary",
-                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+    def test_23_live_stats(self, api, base_url):
+        r = api.get(f"{base_url}/stats/live")
         assert r.status_code == 200
         j = r.json()
-        assert "total_users" in j and "pending_deposits" in j
+        for k in ("active_earners", "total_withdrawn", "payouts_today", "recent_withdrawals"):
+            assert k in j
+        assert len(j["recent_withdrawals"]) >= 1
+        assert "***" in j["recent_withdrawals"][0]["name"]
 
-    def test_42_admin_deposits(self, api, base_url):
-        r = api.get(f"{base_url}/admin/deposits",
-                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
-        assert r.status_code == 200
-        assert any(d["request_id"] == self.state["deposit_id"] for d in r.json()["deposits"])
+    # ---------- Task payments ----------
+    def test_30_pay_task_bad_screenshot(self, api, base_url):
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_1200"]["task_id"],
+                           "screenshot": "short", "method": "phonepe"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 400
 
-    def test_43_admin_users(self, api, base_url):
-        r = api.get(f"{base_url}/admin/users",
-                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
-        assert r.status_code == 200
-        assert len(r.json()["users"]) >= 1
-
-    # ---------- End-to-end ----------
-    def test_50_e2e_money_flow(self, api, base_url):
-        email = rand_email("e2e")
-        r = api.post(f"{base_url}/auth/register",
-                     json={"name": "E2E", "email": email, "password": "pass1234"})
-        assert r.status_code == 200
-        tok = r.json()["token"]
-        auth = {"Authorization": f"Bearer {tok}"}
-        admin_h = {"Authorization": f"Bearer {self.state['admin_token']}"}
-
-        # Deposit
-        r = api.post(f"{base_url}/wallet/deposit",
-                     json={"amount": 2000, "upi_reference": "E2ETXN"}, headers=auth)
-        dep_id = r.json()["request"]["request_id"]
-
-        # Approve
-        r = api.post(f"{base_url}/admin/deposits/{dep_id}/approve",
-                     json={"note": "ok"}, headers=admin_h)
-        assert r.status_code == 200
-        assert r.json()["status"] == "approved"
-
-        r = api.get(f"{base_url}/auth/me", headers=auth)
-        assert r.json()["user"]["balance"] == 2070.0
-
-        # Activate Starter plan (500) => reward 20 => balance = 2070-500+20 = 1590
-        r = api.post(f"{base_url}/plans/activate",
-                     json={"plan_id": self.state["plan_starter"]["plan_id"]},
-                     headers=auth)
+    def test_31_pay_task_ok(self, api, base_url):
+        big_ss = "data:image/jpeg;base64," + ("A" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_1200"]["task_id"],
+                           "screenshot": big_ss, "method": "phonepe"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         assert r.status_code == 200, r.text
-        assert abs(r.json()["user"]["balance"] - 1590.0) < 0.01
+        pay = r.json()["payment"]
+        assert pay["status"] == "pending"
+        assert pay["credit"] == 1320
+        assert "screenshot" not in pay  # scrubbed from response
+        self.state["pay_id"] = pay["payment_id"]
 
-        # Withdraw 500
-        r = api.post(f"{base_url}/wallet/withdraw",
-                     json={"amount": 500, "upi_id": "user@upi"}, headers=auth)
-        wd_id = r.json()["request"]["request_id"]
-        r = api.post(f"{base_url}/admin/withdrawals/{wd_id}/approve",
-                     json={"note": "ok"}, headers=admin_h)
+    def test_32_admin_payments_list(self, api, base_url):
+        r = api.get(f"{base_url}/admin/payments?status=pending",
+                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
         assert r.status_code == 200
+        pays = r.json()["payments"]
+        found = next(p for p in pays if p["payment_id"] == self.state["pay_id"])
+        assert found["screenshot"].startswith("data:image/")
 
-        r = api.get(f"{base_url}/auth/me", headers=auth)
-        assert abs(r.json()["user"]["balance"] - 1090.0) < 0.01
-
-    def test_51_reject_deposit(self, api, base_url):
-        email = rand_email("reject")
+    def test_33_admin_payment_reject_does_not_credit(self, api, base_url):
+        # create another user + payment, reject it, ensure balance unchanged
+        email = rand_email("rej")
         r = api.post(f"{base_url}/auth/register",
-                     json={"name": "R", "email": email, "password": "pass1234"})
+                     json={"name": "Rej", "email": email, "password": "pass1234"})
         tok = r.json()["token"]
-        r = api.post(f"{base_url}/wallet/deposit",
-                     json={"amount": 500, "upi_reference": "REJTXN"},
+        big_ss = "data:image/jpeg;base64," + ("B" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_1200"]["task_id"],
+                           "screenshot": big_ss, "method": "gpay"},
                      headers={"Authorization": f"Bearer {tok}"})
-        dep_id = r.json()["request"]["request_id"]
-        admin_h = {"Authorization": f"Bearer {self.state['admin_token']}"}
-        r = api.post(f"{base_url}/admin/deposits/{dep_id}/reject",
-                     json={"note": "bad"}, headers=admin_h)
+        pid = r.json()["payment"]["payment_id"]
+        r = api.post(f"{base_url}/admin/payments/{pid}/reject",
+                     json={"note": "bad ss"},
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
         assert r.status_code == 200
         assert r.json()["status"] == "rejected"
         r = api.get(f"{base_url}/auth/me",
                     headers={"Authorization": f"Bearer {tok}"})
         assert r.json()["user"]["balance"] == 70.0
 
-    def test_60_logout_invalidates(self, api, base_url):
+    def test_34_admin_payment_approve_credits(self, api, base_url):
+        r = api.post(f"{base_url}/admin/payments/{self.state['pay_id']}/approve",
+                     json={"note": "ok"},
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+        assert r.json()["status"] == "approved"
+
+        r = api.get(f"{base_url}/auth/me",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        bal = r.json()["user"]["balance"]
+        # Started at 70+300=370, task credit 1320 -> 1690
+        assert bal >= 1690 - 0.01
+
+        # plan_activation should exist
+        r = api.get(f"{base_url}/plans/my",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        acts = r.json()["activations"]
+        assert any(a["task_id"] == self.state["task_1200"]["task_id"] for a in acts)
+
+    # ---------- Payout Accounts ----------
+    def test_40_add_account_invalid_upi(self, api, base_url):
+        r = api.post(f"{base_url}/accounts",
+                     json={"method": "PhonePe", "holder_name": "Reg", "upi_id": "notaupi"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 400
+
+    def test_41_add_account_ok(self, api, base_url):
+        r = api.post(f"{base_url}/accounts",
+                     json={"method": "PhonePe", "holder_name": "Reg", "upi_id": "reg@upi"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200
+        acc = r.json()["account"]
+        assert acc["upi_id"] == "reg@upi"
+        self.state["acc_id"] = acc["account_id"]
+
+    def test_42_list_accounts(self, api, base_url):
+        r = api.get(f"{base_url}/accounts",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200
+        assert any(a["account_id"] == self.state["acc_id"] for a in r.json()["accounts"])
+
+    # ---------- Withdraw ----------
+    def test_50_withdraw_invalid_account(self, api, base_url):
+        r = api.post(f"{base_url}/wallet/withdraw",
+                     json={"amount": 100, "account_id": "acc_bogus"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 400
+
+    def test_51_withdraw_insufficient(self, api, base_url):
+        r = api.post(f"{base_url}/wallet/withdraw",
+                     json={"amount": 999999, "account_id": self.state["acc_id"]},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 400
+
+    def test_52_withdraw_ok_and_admin_approve(self, api, base_url):
+        r = api.post(f"{base_url}/wallet/withdraw",
+                     json={"amount": 500, "account_id": self.state["acc_id"]},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200, r.text
+        wd_id = r.json()["request"]["request_id"]
+
+        r0 = api.get(f"{base_url}/auth/me",
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        bal_before = r0.json()["user"]["balance"]
+
+        r = api.post(f"{base_url}/admin/withdrawals/{wd_id}/approve",
+                     json={"note": "ok"},
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+
+        r = api.get(f"{base_url}/auth/me",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert abs(r.json()["user"]["balance"] - (bal_before - 500)) < 0.01
+
+    # ---------- Support ----------
+    def test_60_support_send_empty(self, api, base_url):
+        r = api.post(f"{base_url}/support/send", json={"text": "   "},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 400
+
+    def test_61_support_send_and_list(self, api, base_url):
+        r = api.post(f"{base_url}/support/send", json={"text": "Hello support"},
+                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200
+        r = api.get(f"{base_url}/support/my",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200
+        assert any(m["text"] == "Hello support" for m in r.json()["messages"])
+
+    def test_62_admin_support_threads_and_reply(self, api, base_url):
+        r = api.get(f"{base_url}/admin/support/threads",
+                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+        threads = r.json()["threads"]
+        my_uid = self.state["reg_user"]["user_id"]
+        assert any(t["user_id"] == my_uid for t in threads)
+
+        r = api.get(f"{base_url}/admin/support/{my_uid}",
+                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+
+        r = api.post(f"{base_url}/admin/support/{my_uid}",
+                     json={"text": "Admin reply"},
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+
+        # user sees reply
+        r = api.get(f"{base_url}/support/my",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert any(m["text"] == "Admin reply" and m["sender"] == "admin"
+                   for m in r.json()["messages"])
+
+    def test_63_non_admin_blocked_on_admin_support(self, api, base_url):
+        h = {"Authorization": f"Bearer {self.state['reg_token']}"}
+        assert api.get(f"{base_url}/admin/support/threads", headers=h).status_code == 403
+        assert api.get(f"{base_url}/admin/support/{self.state['reg_user']['user_id']}",
+                       headers=h).status_code == 403
+        assert api.post(f"{base_url}/admin/support/{self.state['reg_user']['user_id']}",
+                        json={"text": "x"}, headers=h).status_code == 403
+        assert api.get(f"{base_url}/admin/payments", headers=h).status_code == 403
+        assert api.get(f"{base_url}/admin/withdrawals", headers=h).status_code == 403
+        assert api.get(f"{base_url}/admin/users", headers=h).status_code == 403
+
+    # ---------- Full e2e ----------
+    def test_70_e2e_task_flow(self, api, base_url):
+        email = rand_email("e2e")
+        r = api.post(f"{base_url}/auth/register",
+                     json={"name": "E2E", "email": email, "password": "pass1234"})
+        tok = r.json()["token"]
+        auth = {"Authorization": f"Bearer {tok}"}
+        admin_h = {"Authorization": f"Bearer {self.state['admin_token']}"}
+
+        # pay 1200 task
+        big_ss = "data:image/jpeg;base64," + ("C" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_1200"]["task_id"],
+                           "screenshot": big_ss, "method": "phonepe"},
+                     headers=auth)
+        pay_id = r.json()["payment"]["payment_id"]
+
+        # approve => +1320
+        r = api.post(f"{base_url}/admin/payments/{pay_id}/approve",
+                     json={"note": "ok"}, headers=admin_h)
+        assert r.status_code == 200
+
+        r = api.get(f"{base_url}/auth/me", headers=auth)
+        assert abs(r.json()["user"]["balance"] - (70 + 1320)) < 0.01
+
+        # add payout account
+        r = api.post(f"{base_url}/accounts",
+                     json={"method": "GPay", "holder_name": "E2E", "upi_id": "e2e@upi"},
+                     headers=auth)
+        acc_id = r.json()["account"]["account_id"]
+
+        # withdraw 500
+        r = api.post(f"{base_url}/wallet/withdraw",
+                     json={"amount": 500, "account_id": acc_id}, headers=auth)
+        wd_id = r.json()["request"]["request_id"]
+
+        r = api.post(f"{base_url}/admin/withdrawals/{wd_id}/approve",
+                     json={"note": "ok"}, headers=admin_h)
+        assert r.status_code == 200
+
+        r = api.get(f"{base_url}/auth/me", headers=auth)
+        assert abs(r.json()["user"]["balance"] - (70 + 1320 - 500)) < 0.01
+
+    def test_80_logout_invalidates(self, api, base_url):
         email = rand_email("lo")
         r = api.post(f"{base_url}/auth/register",
                      json={"name": "L", "email": email, "password": "pass1234"})

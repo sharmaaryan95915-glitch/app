@@ -3,8 +3,11 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import base64
 import logging
+import random
 import secrets
+import string
 import uuid
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
@@ -28,8 +31,10 @@ EMERGENT_AUTH_BASE = os.environ['EMERGENT_AUTH_BASE']
 
 SIGNUP_BONUS = 70
 REFERRAL_REWARD = 300
-PLAN_REWARD_RATE = 0.04
+DAILY_RATE = 0.04
 SESSION_DAYS = 30
+TELEGRAM_LINK = "https://t.me/+Kwsy2cWqzQRmYmY9"
+BIG_PAYMENT_UPI = "harsh.g216@ptyes"
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -64,6 +69,15 @@ def new_id(prefix: str) -> str:
 
 def gen_referral_code() -> str:
     return "VP" + secrets.token_hex(3).upper()
+
+
+def gen_task_code() -> str:
+    return "VP-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
+
+
+def clean(doc: dict) -> dict:
+    doc.pop("_id", None)
+    return doc
 
 
 def public_user(u: dict) -> dict:
@@ -118,14 +132,13 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
-async def add_transaction(user_id: str, tx_type: str, amount: float, title: str, meta: Optional[dict] = None):
+async def add_transaction(user_id: str, tx_type: str, amount: float, title: str):
     await db.transactions.insert_one({
         "tx_id": new_id("tx"),
         "user_id": user_id,
-        "type": tx_type,  # bonus, referral, deposit, withdraw, plan, plan_reward
+        "type": tx_type,
         "amount": round(amount, 2),
         "title": title,
-        "meta": meta or {},
         "created_at": iso(now_utc()),
     })
 
@@ -147,68 +160,58 @@ class GoogleSessionInput(BaseModel):
     session_token: str
 
 
-class ActivatePlanInput(BaseModel):
-    plan_id: str
-
-
-class DepositInput(BaseModel):
-    amount: float
-    upi_reference: str
+class TaskPayInput(BaseModel):
+    task_id: str
+    screenshot: str  # base64 data url
+    method: Optional[str] = None
 
 
 class WithdrawInput(BaseModel):
     amount: float
-    upi_id: str
+    account_id: str
 
 
-class UpiConfigInput(BaseModel):
+class AccountInput(BaseModel):
+    method: str
+    holder_name: str
     upi_id: str
-    upi_name: str
-    qr_image: Optional[str] = None
 
 
 class RequestActionInput(BaseModel):
     note: Optional[str] = None
 
 
-# ---------------- Auth Routes ----------------
+class SupportSendInput(BaseModel):
+    text: str
+
+
+class UpiConfigInput(BaseModel):
+    upi_id: Optional[str] = None
+    upi_name: Optional[str] = None
+
+
+# ---------------- Auth ----------------
 @api_router.post("/auth/register")
 async def register(data: RegisterInput):
     email = data.email.lower()
-    existing = await db.users.find_one({"email": email})
-    if existing:
+    if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
-
     user_id = new_id("user")
     referrer = None
     if data.referral_code:
         referrer = await db.users.find_one({"referral_code": data.referral_code.strip().upper()})
-
-    user_doc = {
-        "user_id": user_id,
-        "email": email,
-        "name": data.name.strip(),
-        "password_hash": hash_password(data.password),
-        "auth_provider": "email",
-        "role": "user",
-        "balance": float(SIGNUP_BONUS),
-        "total_earned": float(SIGNUP_BONUS),
-        "referral_code": gen_referral_code(),
-        "referred_by": referrer["user_id"] if referrer else None,
-        "picture": None,
-        "created_at": iso(now_utc()),
-    }
-    await db.users.insert_one(user_doc)
+    await db.users.insert_one({
+        "user_id": user_id, "email": email, "name": data.name.strip(),
+        "password_hash": hash_password(data.password), "auth_provider": "email", "role": "user",
+        "balance": float(SIGNUP_BONUS), "total_earned": float(SIGNUP_BONUS),
+        "referral_code": gen_referral_code(), "referred_by": referrer["user_id"] if referrer else None,
+        "picture": None, "created_at": iso(now_utc()),
+    })
     await add_transaction(user_id, "bonus", SIGNUP_BONUS, "Signup bonus")
-
     if referrer:
-        await db.users.update_one(
-            {"user_id": referrer["user_id"]},
-            {"$inc": {"balance": REFERRAL_REWARD, "total_earned": REFERRAL_REWARD}},
-        )
-        await add_transaction(referrer["user_id"], "referral", REFERRAL_REWARD,
-                              f"Referral bonus — {data.name.strip()}")
-
+        await db.users.update_one({"user_id": referrer["user_id"]},
+                                  {"$inc": {"balance": REFERRAL_REWARD, "total_earned": REFERRAL_REWARD}})
+        await add_transaction(referrer["user_id"], "referral", REFERRAL_REWARD, f"Referral bonus — {data.name.strip()}")
     token = await create_session(user_id)
     fresh = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     return {"token": token, "user": public_user(fresh)}
@@ -226,10 +229,8 @@ async def login(data: LoginInput):
 @api_router.post("/auth/google-session")
 async def google_session(data: GoogleSessionInput):
     async with httpx.AsyncClient(timeout=15) as hc:
-        resp = await hc.get(
-            f"{EMERGENT_AUTH_BASE}/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": data.session_token},
-        )
+        resp = await hc.get(f"{EMERGENT_AUTH_BASE}/auth/v1/env/oauth/session-data",
+                            headers={"X-Session-ID": data.session_token})
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid Google session")
     info = resp.json()
@@ -237,23 +238,15 @@ async def google_session(data: GoogleSessionInput):
     user = await db.users.find_one({"email": email})
     if not user:
         user_id = new_id("user")
-        user_doc = {
-            "user_id": user_id,
-            "email": email,
-            "name": info.get("name", email.split("@")[0]),
-            "password_hash": None,
-            "auth_provider": "google",
-            "role": "user",
-            "balance": float(SIGNUP_BONUS),
-            "total_earned": float(SIGNUP_BONUS),
-            "referral_code": gen_referral_code(),
-            "referred_by": None,
-            "picture": info.get("picture"),
-            "created_at": iso(now_utc()),
+        user = {
+            "user_id": user_id, "email": email, "name": info.get("name", email.split("@")[0]),
+            "password_hash": None, "auth_provider": "google", "role": "user",
+            "balance": float(SIGNUP_BONUS), "total_earned": float(SIGNUP_BONUS),
+            "referral_code": gen_referral_code(), "referred_by": None,
+            "picture": info.get("picture"), "created_at": iso(now_utc()),
         }
-        await db.users.insert_one(user_doc)
+        await db.users.insert_one(dict(user))
         await add_transaction(user_id, "bonus", SIGNUP_BONUS, "Signup bonus")
-        user = user_doc
     token = await create_session(user["user_id"])
     return {"token": token, "user": public_user(user)}
 
@@ -266,57 +259,55 @@ async def me(user: dict = Depends(get_current_user)):
 @api_router.post("/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
     if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-        await db.user_sessions.delete_one({"session_token": token})
+        await db.user_sessions.delete_one({"session_token": authorization.split(" ", 1)[1].strip()})
     return {"success": True}
 
 
-# ---------------- Plans ----------------
-@api_router.get("/plans")
-async def list_plans():
-    plans = await db.plans.find({}, {"_id": 0}).sort("amount", 1).to_list(100)
-    return {"plans": plans}
+# ---------------- Config / Tasks ----------------
+@api_router.get("/config")
+async def get_config():
+    return {"telegram": TELEGRAM_LINK}
+
+
+@api_router.get("/tasks")
+async def list_tasks():
+    tasks = await db.tasks.find({}, {"_id": 0}).sort([("category", 1), ("order", 1)]).to_list(200)
+    reward = [t for t in tasks if t["category"] == "reward"]
+    daily = [t for t in tasks if t["category"] == "daily"]
+    return {"reward": reward, "daily": daily}
+
+
+@api_router.get("/tasks/my-payments")
+async def my_payments(user: dict = Depends(get_current_user)):
+    pays = await db.task_payments.find({"user_id": user["user_id"]}, {"_id": 0, "screenshot": 0}) \
+        .sort("created_at", -1).to_list(300)
+    return {"payments": pays}
 
 
 @api_router.get("/plans/my")
 async def my_plans(user: dict = Depends(get_current_user)):
-    acts = await db.plan_activations.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    acts = await db.plan_activations.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(300)
     return {"activations": acts}
 
 
-@api_router.post("/plans/activate")
-async def activate_plan(data: ActivatePlanInput, user: dict = Depends(get_current_user)):
-    plan = await db.plans.find_one({"plan_id": data.plan_id}, {"_id": 0})
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
-    amount = float(plan["amount"])
-    if user["balance"] < amount:
-        raise HTTPException(status_code=400, detail="Insufficient balance. Please deposit first.")
-    reward = round(amount * PLAN_REWARD_RATE, 2)
-
-    # Principal is locked into the active plan; the 4% reward is credited to spendable balance.
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$inc": {"balance": reward - amount, "total_earned": reward}},
-    )
-
-    act = {
-        "activation_id": new_id("act"),
-        "user_id": user["user_id"],
-        "plan_id": plan["plan_id"],
-        "plan_name": plan["name"],
-        "amount": amount,
-        "reward": reward,
-        "status": "active",
-        "created_at": iso(now_utc()),
+@api_router.post("/tasks/pay")
+async def pay_task(data: TaskPayInput, user: dict = Depends(get_current_user)):
+    task = await db.tasks.find_one({"task_id": data.task_id}, {"_id": 0})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not data.screenshot or len(data.screenshot) < 50:
+        raise HTTPException(status_code=400, detail="Please attach a valid payment screenshot")
+    credit = round(task["amount"] + task["reward"], 2)
+    req = {
+        "payment_id": new_id("pay"), "user_id": user["user_id"], "user_name": user["name"],
+        "user_email": user["email"], "task_id": task["task_id"], "task_name": task["name"],
+        "category": task["category"], "amount": task["amount"], "reward": task["reward"],
+        "credit": credit, "screenshot": data.screenshot, "method": data.method,
+        "status": "pending", "note": None, "created_at": iso(now_utc()),
     }
-    await db.plan_activations.insert_one(act)
-    act.pop("_id", None)
-    await add_transaction(user["user_id"], "plan", -amount, f"Activated {plan['name']}")
-    await add_transaction(user["user_id"], "plan_reward", reward, f"Reward — {plan['name']}")
-
-    fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    return {"activation": act, "user": public_user(fresh)}
+    await db.task_payments.insert_one(req)
+    out = {k: v for k, v in req.items() if k not in ("screenshot", "_id")}
+    return {"payment": out}
 
 
 # ---------------- Wallet ----------------
@@ -329,27 +320,38 @@ async def transactions(user: dict = Depends(get_current_user)):
 @api_router.get("/wallet/upi-info")
 async def upi_info(user: dict = Depends(get_current_user)):
     cfg = await db.app_config.find_one({"key": "upi"}, {"_id": 0})
-    return {"upi": cfg["value"] if cfg else {}}
+    val = cfg["value"] if cfg else {}
+    return {"upi": {
+        "upi_id": val.get("upi_id", BIG_PAYMENT_UPI),
+        "upi_name": val.get("upi_name", "Victory Pay"),
+        "big_payment_upi": BIG_PAYMENT_UPI,
+        "qr_images": val.get("qr_images", []),
+    }}
 
 
-@api_router.post("/wallet/deposit")
-async def deposit(data: DepositInput, user: dict = Depends(get_current_user)):
-    if data.amount <= 0:
-        raise HTTPException(status_code=400, detail="Enter a valid amount")
-    req = {
-        "request_id": new_id("dep"),
-        "user_id": user["user_id"],
-        "user_name": user["name"],
-        "user_email": user["email"],
-        "amount": round(data.amount, 2),
-        "upi_reference": data.upi_reference.strip(),
-        "status": "pending",
-        "note": None,
+@api_router.get("/accounts")
+async def list_accounts(user: dict = Depends(get_current_user)):
+    accts = await db.payout_accounts.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return {"accounts": accts}
+
+
+@api_router.post("/accounts")
+async def add_account(data: AccountInput, user: dict = Depends(get_current_user)):
+    if "@" not in data.upi_id:
+        raise HTTPException(status_code=400, detail="Enter a valid UPI ID")
+    acct = {
+        "account_id": new_id("acc"), "user_id": user["user_id"], "method": data.method,
+        "holder_name": data.holder_name.strip(), "upi_id": data.upi_id.strip(),
         "created_at": iso(now_utc()),
     }
-    await db.deposit_requests.insert_one(req)
-    req.pop("_id", None)
-    return {"request": req}
+    await db.payout_accounts.insert_one(acct)
+    return {"account": clean(dict(acct))}
+
+
+@api_router.delete("/accounts/{account_id}")
+async def delete_account(account_id: str, user: dict = Depends(get_current_user)):
+    await db.payout_accounts.delete_one({"account_id": account_id, "user_id": user["user_id"]})
+    return {"success": True}
 
 
 @api_router.post("/wallet/withdraw")
@@ -358,65 +360,126 @@ async def withdraw(data: WithdrawInput, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Enter a valid amount")
     if user["balance"] < data.amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
+    acct = await db.payout_accounts.find_one({"account_id": data.account_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not acct:
+        raise HTTPException(status_code=400, detail="Select a valid payout account")
     req = {
-        "request_id": new_id("wd"),
-        "user_id": user["user_id"],
-        "user_name": user["name"],
-        "user_email": user["email"],
-        "amount": round(data.amount, 2),
-        "upi_id": data.upi_id.strip(),
-        "status": "pending",
-        "note": None,
-        "created_at": iso(now_utc()),
+        "request_id": new_id("wd"), "user_id": user["user_id"], "user_name": user["name"],
+        "user_email": user["email"], "amount": round(data.amount, 2),
+        "upi_id": acct["upi_id"], "method": acct["method"], "holder_name": acct["holder_name"],
+        "status": "pending", "note": None, "created_at": iso(now_utc()),
     }
     await db.withdraw_requests.insert_one(req)
-    req.pop("_id", None)
-    return {"request": req}
+    return {"request": clean(dict(req))}
 
 
 @api_router.get("/wallet/my-requests")
 async def my_requests(user: dict = Depends(get_current_user)):
-    deps = await db.deposit_requests.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     wds = await db.withdraw_requests.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    return {"deposits": deps, "withdrawals": wds}
+    pays = await db.task_payments.find({"user_id": user["user_id"]}, {"_id": 0, "screenshot": 0}) \
+        .sort("created_at", -1).to_list(200)
+    return {"withdrawals": wds, "payments": pays}
 
 
 # ---------------- Referrals ----------------
 @api_router.get("/referrals")
 async def referrals(user: dict = Depends(get_current_user)):
     invited = await db.users.find({"referred_by": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    invited_list = [{
-        "name": u["name"],
-        "email": u["email"],
-        "created_at": u["created_at"],
-    } for u in invited]
-    ref_txs = await db.transactions.find(
-        {"user_id": user["user_id"], "type": "referral"}, {"_id": 0}
-    ).to_list(1000)
+    invited_list = [{"name": u["name"], "email": u["email"], "created_at": u["created_at"]} for u in invited]
+    ref_txs = await db.transactions.find({"user_id": user["user_id"], "type": "referral"}, {"_id": 0}).to_list(1000)
     total = sum(t["amount"] for t in ref_txs)
-    return {
-        "referral_code": user["referral_code"],
-        "total_earned": round(total, 2),
-        "reward_per_referral": REFERRAL_REWARD,
-        "count": len(invited_list),
-        "invited": invited_list,
-    }
+    return {"referral_code": user["referral_code"], "total_earned": round(total, 2),
+            "reward_per_referral": REFERRAL_REWARD, "count": len(invited_list), "invited": invited_list}
+
+
+# ---------------- Live stats (randomised social proof) ----------------
+FIRST_NAMES = ["Rahul", "Priya", "Amit", "Sneha", "Vikas", "Neha", "Arjun", "Pooja", "Rohit", "Kavya",
+               "Sanjay", "Anjali", "Karan", "Divya", "Manish", "Ritu", "Suresh", "Meena", "Deepak",
+               "Nisha", "Ajay", "Simran", "Vishal", "Aarav", "Ishaan", "Ananya", "Kabir", "Riya",
+               "Harsh", "Tanvi", "Yash", "Payal", "Gaurav", "Shreya", "Nikhil", "Pallavi"]
+
+
+def masked_name() -> str:
+    n = random.choice(FIRST_NAMES)
+    last = random.choice(string.ascii_uppercase)
+    return f"{n} {last}***"
+
+
+@api_router.get("/stats/live")
+async def live_stats():
+    seed_base = int(now_utc().timestamp() // 20)  # changes every 20s
+    rnd = random.Random(seed_base)
+    active = 12000 + rnd.randint(0, 4000) + (seed_base % 97)
+    withdrawn = 11500000 + rnd.randint(0, 900000)
+    payouts_today = 800 + rnd.randint(0, 500)
+    recent = []
+    for _ in range(8):
+        amt = rnd.choice([520, 750, 1320, 900, 1250, 2080, 1560, 310, 210, 1830, 1250, 3120])
+        recent.append({"name": masked_name(), "amount": amt, "ago": rnd.randint(1, 9)})
+    return {"active_earners": active, "total_withdrawn": withdrawn,
+            "payouts_today": payouts_today, "recent_withdrawals": recent}
+
+
+# ---------------- Support ----------------
+@api_router.get("/support/my")
+async def support_my(user: dict = Depends(get_current_user)):
+    msgs = await db.support_messages.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return {"messages": msgs}
+
+
+@api_router.post("/support/send")
+async def support_send(data: SupportSendInput, user: dict = Depends(get_current_user)):
+    if not data.text.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    msg = {"msg_id": new_id("msg"), "user_id": user["user_id"], "user_name": user["name"],
+           "sender": "user", "text": data.text.strip(), "read_by_admin": False, "created_at": iso(now_utc())}
+    await db.support_messages.insert_one(msg)
+    return {"message": clean(dict(msg))}
 
 
 # ---------------- Admin ----------------
 @api_router.get("/admin/summary")
 async def admin_summary(admin: dict = Depends(require_admin)):
-    total_users = await db.users.count_documents({})
-    pending_dep = await db.deposit_requests.count_documents({"status": "pending"})
-    pending_wd = await db.withdraw_requests.count_documents({"status": "pending"})
-    return {"total_users": total_users, "pending_deposits": pending_dep, "pending_withdrawals": pending_wd}
+    return {
+        "total_users": await db.users.count_documents({}),
+        "pending_payments": await db.task_payments.count_documents({"status": "pending"}),
+        "pending_withdrawals": await db.withdraw_requests.count_documents({"status": "pending"}),
+        "open_support": await db.support_messages.count_documents({"sender": "user", "read_by_admin": False}),
+    }
 
 
-@api_router.get("/admin/deposits")
-async def admin_deposits(status: str = "pending", admin: dict = Depends(require_admin)):
+@api_router.get("/admin/payments")
+async def admin_payments(status: str = "pending", admin: dict = Depends(require_admin)):
     q = {} if status == "all" else {"status": status}
-    reqs = await db.deposit_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"deposits": reqs}
+    reqs = await db.task_payments.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"payments": reqs}
+
+
+@api_router.post("/admin/payments/{payment_id}/{action}")
+async def admin_payment_action(payment_id: str, action: str, data: RequestActionInput,
+                               admin: dict = Depends(require_admin)):
+    req = await db.task_payments.find_one({"payment_id": payment_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    if req["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Already processed")
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+    if action == "approve":
+        await db.users.update_one({"user_id": req["user_id"]},
+                                  {"$inc": {"balance": req["credit"], "total_earned": req["reward"]}})
+        await add_transaction(req["user_id"], "task", req["credit"], f"{req['task_name']} completed")
+        await db.plan_activations.insert_one({
+            "activation_id": new_id("act"), "user_id": req["user_id"], "task_id": req["task_id"],
+            "plan_name": req["task_name"], "amount": req["amount"], "reward": req["reward"],
+            "status": "active", "created_at": iso(now_utc()),
+        })
+        new_status = "approved"
+    else:
+        new_status = "rejected"
+    await db.task_payments.update_one({"payment_id": payment_id},
+                                      {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}})
+    return {"success": True, "status": new_status}
 
 
 @api_router.get("/admin/withdrawals")
@@ -426,30 +489,6 @@ async def admin_withdrawals(status: str = "pending", admin: dict = Depends(requi
     return {"withdrawals": reqs}
 
 
-@api_router.post("/admin/deposits/{request_id}/{action}")
-async def admin_deposit_action(request_id: str, action: str, data: RequestActionInput,
-                               admin: dict = Depends(require_admin)):
-    req = await db.deposit_requests.find_one({"request_id": request_id}, {"_id": 0})
-    if not req:
-        raise HTTPException(status_code=404, detail="Request not found")
-    if req["status"] != "pending":
-        raise HTTPException(status_code=400, detail="Request already processed")
-    if action not in ("approve", "reject"):
-        raise HTTPException(status_code=400, detail="Invalid action")
-
-    if action == "approve":
-        await db.users.update_one({"user_id": req["user_id"]}, {"$inc": {"balance": req["amount"]}})
-        await add_transaction(req["user_id"], "deposit", req["amount"], "Deposit approved")
-        new_status = "approved"
-    else:
-        new_status = "rejected"
-    await db.deposit_requests.update_one(
-        {"request_id": request_id},
-        {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}},
-    )
-    return {"success": True, "status": new_status}
-
-
 @api_router.post("/admin/withdrawals/{request_id}/{action}")
 async def admin_withdraw_action(request_id: str, action: str, data: RequestActionInput,
                                 admin: dict = Depends(require_admin)):
@@ -457,10 +496,9 @@ async def admin_withdraw_action(request_id: str, action: str, data: RequestActio
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     if req["status"] != "pending":
-        raise HTTPException(status_code=400, detail="Request already processed")
+        raise HTTPException(status_code=400, detail="Already processed")
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action")
-
     if action == "approve":
         target = await db.users.find_one({"user_id": req["user_id"]}, {"_id": 0})
         if target["balance"] < req["amount"]:
@@ -470,11 +508,17 @@ async def admin_withdraw_action(request_id: str, action: str, data: RequestActio
         new_status = "approved"
     else:
         new_status = "rejected"
-    await db.withdraw_requests.update_one(
-        {"request_id": request_id},
-        {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}},
-    )
+    await db.withdraw_requests.update_one({"request_id": request_id},
+                                          {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}})
     return {"success": True, "status": new_status}
+
+
+@api_router.get("/admin/payments/{payment_id}/screenshot")
+async def admin_payment_screenshot(payment_id: str, admin: dict = Depends(require_admin)):
+    req = await db.task_payments.find_one({"payment_id": payment_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return {"screenshot": req.get("screenshot")}
 
 
 @api_router.get("/admin/users")
@@ -483,17 +527,39 @@ async def admin_users(admin: dict = Depends(require_admin)):
     return {"users": [public_user(u) for u in users]}
 
 
-@api_router.put("/admin/upi-info")
-async def update_upi(data: UpiConfigInput, admin: dict = Depends(require_admin)):
-    value = {"upi_id": data.upi_id, "upi_name": data.upi_name}
-    if data.qr_image is not None:
-        value["qr_image"] = data.qr_image
-    else:
-        existing = await db.app_config.find_one({"key": "upi"})
-        if existing and existing.get("value", {}).get("qr_image"):
-            value["qr_image"] = existing["value"]["qr_image"]
-    await db.app_config.update_one({"key": "upi"}, {"$set": {"value": value}}, upsert=True)
-    return {"upi": value}
+@api_router.get("/admin/support/threads")
+async def admin_support_threads(admin: dict = Depends(require_admin)):
+    pipeline = [
+        {"$sort": {"created_at": 1}},
+        {"$group": {"_id": "$user_id", "user_name": {"$last": "$user_name"},
+                    "last_text": {"$last": "$text"}, "last_at": {"$last": "$created_at"},
+                    "unread": {"$sum": {"$cond": [{"$and": [{"$eq": ["$sender", "user"]},
+                                                            {"$eq": ["$read_by_admin", False]}]}, 1, 0]}}}},
+        {"$sort": {"last_at": -1}},
+    ]
+    threads = await db.support_messages.aggregate(pipeline).to_list(500)
+    return {"threads": [{"user_id": t["_id"], "user_name": t["user_name"], "last_text": t["last_text"],
+                         "last_at": t["last_at"], "unread": t["unread"]} for t in threads]}
+
+
+@api_router.get("/admin/support/{user_id}")
+async def admin_support_thread(user_id: str, admin: dict = Depends(require_admin)):
+    msgs = await db.support_messages.find({"user_id": user_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    await db.support_messages.update_many({"user_id": user_id, "sender": "user"}, {"$set": {"read_by_admin": True}})
+    return {"messages": msgs}
+
+
+@api_router.post("/admin/support/{user_id}")
+async def admin_support_reply(user_id: str, data: SupportSendInput, admin: dict = Depends(require_admin)):
+    if not data.text.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    msg = {"msg_id": new_id("msg"), "user_id": user_id, "user_name": target["name"],
+           "sender": "admin", "text": data.text.strip(), "read_by_admin": True, "created_at": iso(now_utc())}
+    await db.support_messages.insert_one(msg)
+    return {"message": clean(dict(msg))}
 
 
 @api_router.get("/")
@@ -502,24 +568,20 @@ async def root():
 
 
 app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"],
+                   allow_methods=["*"], allow_headers=["*"])
 
 
-# ---------------- Startup ----------------
-DEFAULT_PLANS = [
-    {"name": "Starter", "amount": 500, "tag": "Entry"},
-    {"name": "Silver", "amount": 1000, "tag": "Popular"},
-    {"name": "Gold", "amount": 2500, "tag": "Best Value"},
-    {"name": "Platinum", "amount": 5000, "tag": "Premium"},
-    {"name": "Victory Elite", "amount": 10000, "tag": "Max Rewards"},
+# ---------------- Startup / Seed ----------------
+REWARD_PLANS = [
+    {"name": "Starter Boost", "amount": 1200, "reward": 120, "trending": False, "tag": "Entry"},
+    {"name": "Silver Plan", "amount": 1900, "reward": 210, "trending": False, "tag": "Popular"},
+    {"name": "Gold Plan", "amount": 2600, "reward": 310, "trending": False, "tag": "Best Value"},
+    {"name": "Trending Elite", "amount": 3500, "reward": 750, "trending": True, "tag": "🔥 For New Users"},
+    {"name": "Platinum Plan", "amount": 6500, "reward": 900, "trending": False, "tag": "Premium"},
+    {"name": "Victory Elite", "amount": 8500, "reward": 1250, "trending": False, "tag": "Max Rewards"},
 ]
+DAILY_AMOUNTS = [500, 600, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
 
 
 @app.on_event("startup")
@@ -528,52 +590,53 @@ async def startup():
     await db.users.create_index("user_id", unique=True)
     await db.users.create_index("referral_code")
     await db.user_sessions.create_index("session_token", unique=True)
-    await db.user_sessions.create_index("user_id")
 
-    # Seed plans
-    if await db.plans.count_documents({}) == 0:
-        for p in DEFAULT_PLANS:
-            await db.plans.insert_one({
-                "plan_id": new_id("plan"),
-                "name": p["name"],
-                "amount": p["amount"],
-                "reward_rate": PLAN_REWARD_RATE,
-                "reward": round(p["amount"] * PLAN_REWARD_RATE, 2),
-                "tag": p["tag"],
-            })
-        logger.info("Seeded default plans")
+    # Reseed tasks (drop + insert to reflect updated amounts/rewards)
+    await db.tasks.delete_many({})
+    order = 0
+    for p in REWARD_PLANS:
+        await db.tasks.insert_one({
+            "task_id": new_id("task"), "category": "reward", "name": p["name"],
+            "amount": p["amount"], "reward": p["reward"], "trending": p["trending"],
+            "tag": p["tag"], "code": gen_task_code(), "order": order,
+        })
+        order += 1
+    order = 0
+    for amt in DAILY_AMOUNTS:
+        await db.tasks.insert_one({
+            "task_id": new_id("task"), "category": "daily", "name": f"Daily Task ₹{amt}",
+            "amount": amt, "reward": round(amt * DAILY_RATE), "trending": False,
+            "tag": "4% Return", "code": gen_task_code(), "order": order,
+        })
+        order += 1
+    logger.info("Reseeded tasks")
 
-    # Seed admin
+    # Admin
     admin = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
     if not admin:
         await db.users.insert_one({
-            "user_id": new_id("user"),
-            "email": ADMIN_EMAIL.lower(),
-            "name": "Admin",
-            "password_hash": hash_password(ADMIN_PASSWORD),
-            "auth_provider": "email",
-            "role": "admin",
-            "balance": 0.0,
-            "total_earned": 0.0,
-            "referral_code": gen_referral_code(),
-            "referred_by": None,
-            "picture": None,
-            "created_at": iso(now_utc()),
+            "user_id": new_id("user"), "email": ADMIN_EMAIL.lower(), "name": "Admin",
+            "password_hash": hash_password(ADMIN_PASSWORD), "auth_provider": "email", "role": "admin",
+            "balance": 0.0, "total_earned": 0.0, "referral_code": gen_referral_code(),
+            "referred_by": None, "picture": None, "created_at": iso(now_utc()),
         })
         logger.info("Seeded admin user")
     else:
         await db.users.update_one({"email": ADMIN_EMAIL.lower()}, {"$set": {"role": "admin"}})
 
-    # Seed UPI config
-    if not await db.app_config.find_one({"key": "upi"}):
-        await db.app_config.insert_one({
-            "key": "upi",
-            "value": {
-                "upi_id": "victorypay@okhdfcbank",
-                "upi_name": "Victory Pay",
-                "qr_image": "https://images.pexels.com/photos/278430/pexels-photo-278430.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-            },
-        })
+    # UPI config with two QR images (base64)
+    qr_images = []
+    for fname in ("qr_phonepe.jpg", "qr_gpay.jpg"):
+        fp = ROOT_DIR / "assets" / fname
+        if fp.exists():
+            b = base64.b64encode(fp.read_bytes()).decode()
+            qr_images.append("data:image/jpeg;base64," + b)
+    await db.app_config.update_one(
+        {"key": "upi"},
+        {"$set": {"value": {"upi_id": BIG_PAYMENT_UPI, "upi_name": "Victory Pay", "qr_images": qr_images}}},
+        upsert=True,
+    )
+    logger.info("UPI config set with %d QR images", len(qr_images))
 
 
 @app.on_event("shutdown")

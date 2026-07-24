@@ -26,9 +26,11 @@ export default function Profile() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const rows = [
+    { icon: "layers-outline", label: "Earning Tasks", onPress: () => router.push("/(tabs)/plans") },
     { icon: "receipt-outline", label: "Transaction History", onPress: () => router.push("/wallet/history") },
-    { icon: "arrow-down-circle-outline", label: "Deposit Funds", onPress: () => router.push("/wallet/deposit") },
+    { icon: "card-outline", label: "Payout Accounts", onPress: () => router.push("/accounts") },
     { icon: "arrow-up-circle-outline", label: "Withdraw Funds", onPress: () => router.push("/wallet/withdraw") },
+    { icon: "help-buoy-outline", label: "Help & Support", onPress: () => router.push("/help") },
   ];
 
   return (

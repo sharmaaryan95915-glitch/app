@@ -40,7 +40,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="plans"
         options={{
-          title: "Plans",
+          title: "Tasks",
           tabBarIcon: ({ color, size }) => <Ionicons name="layers" size={size} color={color} />,
         }}
       />

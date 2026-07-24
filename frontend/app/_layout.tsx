@@ -1,6 +1,6 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LogBox, View } from "react-native";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/context/AuthContext";
 import { ToastProvider } from "@/src/components/Toast";
+import { AnimatedIntro } from "@/src/components/AnimatedIntro";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -40,16 +41,20 @@ function RootNavigator() {
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="wallet/deposit" options={{ presentation: "card" }} />
+      <Stack.Screen name="payment/[taskId]" options={{ presentation: "card" }} />
+      <Stack.Screen name="accounts" options={{ presentation: "card" }} />
+      <Stack.Screen name="help" options={{ presentation: "card" }} />
       <Stack.Screen name="wallet/withdraw" options={{ presentation: "card" }} />
       <Stack.Screen name="wallet/history" options={{ presentation: "card" }} />
       <Stack.Screen name="admin/index" options={{ presentation: "card" }} />
+      <Stack.Screen name="admin/support/[userId]" options={{ presentation: "card" }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
   const [iconsLoaded, iconsError] = useIconFonts();
+  const [introDone, setIntroDone] = useState(false);
   const [fontsLoaded, fontsError] = useFonts({
     "Fraunces-Bold": require("../assets/fonts/Fraunces-Bold.ttf"),
     "Fraunces-SemiBold": require("../assets/fonts/Fraunces-SemiBold.ttf"),
@@ -80,6 +85,7 @@ export default function RootLayout() {
               <View style={{ flex: 1, backgroundColor: colors.surface }}>
                 <RootNavigator />
               </View>
+              {!introDone && <AnimatedIntro onDone={() => setIntroDone(true)} />}
             </ToastProvider>
           </AuthProvider>
         </BottomSheetModalProvider>
