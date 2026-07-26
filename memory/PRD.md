@@ -24,6 +24,11 @@ Convert the Victory Pay website into an Expo mobile app — a premium fintech re
 - Admin: admin@victorypay.com / Admin@123
 - User: test1@example.com / pass123
 
+## Update 2026-07-26 (payment polish)
+- Real UPI `9905066606@ptyes` shown below QR (copyable); 4 QR codes auto-rotate randomly every 3 min + manual Change QR.
+- Order ID auto-generated per payment (returned by /api/tasks/pay), shown in success overlay with double-tick professional confirmation.
+- Help screen: prominent "Instant Help & Complaints" Telegram group (https://t.me/+fPoKJBDQY-9lMTZl) + Official Channel.
+
 ## Backlog / Next
 - P1: Admin edit QR/UPI/USDT-address & beneficiary from app.
 - P1: User order-status tracker (pending/approved/rejected + reason).

@@ -34,8 +34,9 @@ REFERRAL_REWARD = 300
 DAILY_RATE = 0.04
 SESSION_DAYS = 30
 TELEGRAM_LINK = "https://t.me/+Kwsy2cWqzQRmYmY9"
-BIG_PAYMENT_UPI = "harsh.g216@ptyes"
-BENEFICIARY_NAME = "Harsh Gupta"
+SUPPORT_TELEGRAM = "https://t.me/+fPoKJBDQY-9lMTZl"
+BIG_PAYMENT_UPI = "9905066606@ptyes"
+BENEFICIARY_NAME = "Victory Pay"
 USDT_ADDRESS = "TXk8rQSAztBGkFqmT8 dummy".replace(" ", "")
 USDT_FALLBACK_RATE = 91.5
 LEVEL_RATES = {1: 0.020, 2: 0.022, 3: 0.024, 4: 0.026, 5: 0.028, 6: 0.030, 7: 0.035}
@@ -278,7 +279,8 @@ _usdt_cache = {"rate": USDT_FALLBACK_RATE, "ts": 0.0}
 
 @api_router.get("/config")
 async def get_config():
-    return {"telegram": TELEGRAM_LINK, "beneficiary_name": BENEFICIARY_NAME,
+    return {"telegram": TELEGRAM_LINK, "support_telegram": SUPPORT_TELEGRAM,
+            "beneficiary_name": BENEFICIARY_NAME,
             "payment_method": "UPI / QR", "usdt_address": USDT_ADDRESS}
 
 
@@ -329,8 +331,10 @@ async def pay_task(data: TaskPayInput, user: dict = Depends(get_current_user)):
     if not data.utr or len(data.utr.strip()) < 6:
         raise HTTPException(status_code=400, detail="Enter a valid UTR / Transaction ID")
     credit = round(task.get("final", task["amount"] + task["reward"]), 2)
+    order_id = "VP" + "".join(random.choices(string.digits, k=10))
     req = {
-        "payment_id": new_id("pay"), "user_id": user["user_id"], "user_name": user["name"],
+        "payment_id": new_id("pay"), "order_id": order_id,
+        "user_id": user["user_id"], "user_name": user["name"],
         "user_email": user["email"], "task_id": task["task_id"], "task_name": task["name"],
         "level": task.get("level"), "amount": task["amount"], "reward": task["reward"],
         "bonus": task.get("bonus", 0), "credit": credit,
@@ -658,9 +662,9 @@ async def startup():
     else:
         await db.users.update_one({"email": ADMIN_EMAIL.lower()}, {"$set": {"role": "admin"}})
 
-    # UPI config with two QR images (base64)
+    # UPI config with QR images (base64)
     qr_images = []
-    for fname in ("qr_phonepe.jpg", "qr_gpay.jpg"):
+    for fname in ("qr1.jpg", "qr2.jpg", "qr3.jpg", "qr4.jpg"):
         fp = ROOT_DIR / "assets" / fname
         if fp.exists():
             b = base64.b64encode(fp.read_bytes()).decode()

@@ -24,23 +24,33 @@ import { useToast } from "@/src/components/Toast";
 import { GoldButton } from "@/src/components/ui";
 import { colors, fonts, money, radius, shadow, spacing } from "@/src/theme";
 
-function SuccessOverlay({ onDone }: { onDone: () => void }) {
+function SuccessOverlay({ orderId, onDone }: { orderId: string; onDone: () => void }) {
   const scale = useSharedValue(0.3);
   const opacity = useSharedValue(0);
+  const tick2 = useSharedValue(0);
   const progress = useSharedValue(0);
   useEffect(() => {
     opacity.value = withTiming(1, { duration: 300 });
     scale.value = withSequence(withTiming(1.12, { duration: 420, easing: Easing.out(Easing.back(2)) }), withTiming(1, { duration: 180 }));
-    progress.value = withDelay(500, withTiming(1, { duration: 1900 }, (f) => { if (f) runOnJS(onDone)(); }));
+    tick2.value = withDelay(360, withTiming(1, { duration: 300 }));
+    progress.value = withDelay(700, withTiming(1, { duration: 2100 }, (f) => { if (f) runOnJS(onDone)(); }));
   }, []);
   const checkStyle = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ scale: scale.value }] }));
+  const tick2Style = useAnimatedStyle(() => ({ opacity: tick2.value, transform: [{ scale: tick2.value }] }));
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
   return (
     <View style={ov.root} testID="success-overlay">
       <Animated.View style={[ov.checkWrap, checkStyle]}>
-        <Ionicons name="checkmark" size={54} color="#fff" />
+        <Ionicons name="checkmark" size={48} color="#fff" />
+        <Animated.View style={[ov.tick2, tick2Style]}>
+          <Ionicons name="checkmark-done" size={26} color={colors.brand} />
+        </Animated.View>
       </Animated.View>
       <Text style={ov.title}>Order Confirmed</Text>
+      <View style={ov.orderChip}>
+        <Ionicons name="receipt-outline" size={14} color={colors.brand} />
+        <Text style={ov.orderId} testID="success-order-id">Order ID: {orderId}</Text>
+      </View>
       <Text style={ov.sub}>Your payment has been submitted successfully.{"\n"}Please wait while our team verifies and approves your transaction.</Text>
       <View style={ov.barTrack}><Animated.View style={[ov.barFill, barStyle]} /></View>
       <Text style={ov.wait}>Returning to dashboard…</Text>
@@ -66,6 +76,7 @@ export default function Payment() {
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [orderId, setOrderId] = useState("");
 
   const pulse = useSharedValue(0);
   useEffect(() => { pulse.value = withRepeat(withTiming(1, { duration: 1500, easing: Easing.out(Easing.ease) }), -1, false); }, []);
@@ -79,6 +90,16 @@ export default function Payment() {
     } catch {}
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Auto-rotate QR randomly every 3 minutes
+  useEffect(() => {
+    const n = upi?.qr_images?.length || 0;
+    if (n < 2) return;
+    const id = setInterval(() => {
+      setQrIndex(() => Math.floor(Math.random() * n));
+    }, 180000);
+    return () => clearInterval(id);
+  }, [upi]);
 
   const qrList: string[] = upi?.qr_images || [];
   const qr = qrList.length ? qrList[qrIndex % qrList.length] : null;
@@ -111,11 +132,12 @@ export default function Payment() {
     if (!shot) return toast.show("Please attach the payment screenshot", "error");
     setLoading(true);
     try {
-      await api.post("/tasks/pay", {
+      const res = await api.post("/tasks/pay", {
         task_id: params.taskId, screenshot: shot, utr: utr.trim(), remarks: remarks.trim(),
         currency, usdt_amount: currency === "USDT" ? Number(usdtAmount.toFixed(2)) : null, method: upi?.upi_name,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setOrderId(res?.payment?.order_id || "VP" + Date.now());
       setSubmitted(true);
     } catch (e: any) {
       toast.show(e.message || "Failed to submit", "error");
@@ -181,6 +203,13 @@ export default function Payment() {
             <Ionicons name="shield-checkmark" size={14} color={colors.success} />
             <Text style={styles.trustText}>100% Secure · Instant Profit</Text>
           </View>
+          <Pressable style={styles.upiUnderQr} onPress={() => copy(currency === "USDT" ? upi?.usdt_address : upi?.big_payment_upi)} testID="upi-under-qr">
+            <View>
+              <Text style={styles.upiUnderLabel}>{currency === "USDT" ? "USDT Address" : "UPI ID"}</Text>
+              <Text style={styles.upiUnderVal} testID="upi-id" numberOfLines={1}>{currency === "USDT" ? (upi?.usdt_address || "—") : (upi?.big_payment_upi || "—")}</Text>
+            </View>
+            <Ionicons name="copy-outline" size={18} color={colors.brand} />
+          </Pressable>
         </View>
 
         {/* Payment Information */}
@@ -250,7 +279,7 @@ export default function Payment() {
         </View>
       </KeyboardStickyView>
 
-      {submitted && <SuccessOverlay onDone={() => router.replace("/(tabs)")} />}
+      {submitted && <SuccessOverlay orderId={orderId} onDone={() => router.replace("/(tabs)")} />}
     </View>
   );
 }
@@ -273,7 +302,10 @@ function TextInputBox({ value, onChange, placeholder, keyboard, testID }: { valu
 const ov = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(242,243,247,0.98)", alignItems: "center", justifyContent: "center", padding: spacing.xxl, zIndex: 1000 },
   checkWrap: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center", ...shadow.card },
+  tick2: { position: "absolute", right: -6, bottom: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...shadow.soft },
   title: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 24, marginTop: spacing.xl },
+  orderChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6, marginTop: spacing.md },
+  orderId: { color: colors.onBrandTertiary, fontFamily: fonts.semibold, fontSize: 13 },
   sub: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: 14, textAlign: "center", marginTop: spacing.md, lineHeight: 20 },
   barTrack: { width: "70%", height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: spacing.xl, overflow: "hidden" },
   barFill: { height: 6, borderRadius: 3, backgroundColor: colors.brand },
@@ -303,6 +335,9 @@ const styles = StyleSheet.create({
   changeQrText: { color: colors.brand, fontFamily: fonts.semibold, fontSize: 13 },
   trustBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   trustText: { color: colors.success, fontFamily: fonts.medium, fontSize: 12 },
+  upiUnderQr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginTop: spacing.md, backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  upiUnderLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11 },
+  upiUnderVal: { color: colors.brand, fontFamily: fonts.bold, fontSize: 16, marginTop: 2 },
   infoCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, paddingHorizontal: spacing.lg, ...shadow.soft },
   infoRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.md },
   infoBorder: { borderBottomWidth: 1, borderBottomColor: colors.divider },

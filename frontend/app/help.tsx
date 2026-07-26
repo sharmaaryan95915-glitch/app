@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { api } from "@/src/api";
 import { useToast } from "@/src/components/Toast";
-import { colors, fonts, radius, spacing } from "@/src/theme";
+import { colors, fonts, radius, shadow, spacing } from "@/src/theme";
 
 const FAQS = [
   { q: "How do I earn money?", a: "Pick any task, pay the amount via UPI, upload the payment screenshot. Once admin verifies, your amount + reward is credited to your balance." },
@@ -28,12 +28,14 @@ export default function Help() {
   const [loading, setLoading] = useState(true);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [telegram, setTelegram] = useState<string>("");
+  const [supportTg, setSupportTg] = useState<string>("");
 
   const load = useCallback(async () => {
     try {
       const [m, c] = await Promise.all([api.get("/support/my"), api.get("/config")]);
       setMessages(m.messages || []);
       setTelegram(c.telegram || "");
+      setSupportTg(c.support_telegram || "");
     } catch {}
     setLoading(false);
   }, []);
@@ -68,11 +70,20 @@ export default function Help() {
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.xl, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <Pressable style={styles.instantBtn} onPress={() => supportTg && Linking.openURL(supportTg)} testID="instant-help-button">
+          <View style={styles.instantIcon}><Ionicons name="flash" size={20} color="#fff" /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.instantTitle}>Instant Help & Complaints</Text>
+            <Text style={styles.instantSub}>Join our support group — replies within minutes</Text>
+          </View>
+          <Ionicons name="open-outline" size={18} color={colors.brand} />
+        </Pressable>
+
         <Pressable style={styles.telegramBtn} onPress={openTelegram} testID="telegram-button">
           <Ionicons name="paper-plane" size={20} color="#fff" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.telegramTitle}>Join our Telegram</Text>
-            <Text style={styles.telegramSub}>Fast support & updates</Text>
+            <Text style={styles.telegramTitle}>Official Channel</Text>
+            <Text style={styles.telegramSub}>News & updates</Text>
           </View>
           <Ionicons name="open-outline" size={18} color="#fff" />
         </Pressable>
@@ -129,7 +140,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   headerTitle: { color: colors.onSurface, fontFamily: fonts.displaySemi, fontSize: 18 },
-  telegramBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#229ED9", borderRadius: radius.md, padding: spacing.lg },
+  telegramBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#229ED9", borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.md },
+  instantBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.brand, padding: spacing.lg, ...shadow.soft },
+  instantIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center" },
+  instantTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16 },
+  instantSub: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: 12, marginTop: 2 },
   telegramTitle: { color: "#fff", fontFamily: fonts.semibold, fontSize: 16 },
   telegramSub: { color: "rgba(255,255,255,0.85)", fontFamily: fonts.regular, fontSize: 12, marginTop: 2 },
   sectionTitle: { color: colors.onSurface, fontFamily: fonts.displaySemi, fontSize: 18, marginTop: spacing.xl, marginBottom: spacing.md },
