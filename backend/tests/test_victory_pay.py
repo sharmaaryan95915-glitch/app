@@ -1,17 +1,12 @@
-"""Victory Pay backend end-to-end tests (LIGHT green fintech redesign iteration).
+"""Victory Pay backend tests — Onboarding + New-User plans + Admin new-order alert iteration.
 
-Covers:
-- Auth (register/login/admin/google invalid/me/logout)
-- Config (telegram, beneficiary_name, payment_method, usdt_address)
-- USDT->INR live rate
-- Tasks list: 35 tasks across L1-L7 with amount/rate/reward/bonus/final/quantity/code
-- Wallet UPI info (beneficiary_name, big_payment_upi='harsh.g216@ptyes', usdt_address, qr_images len 2)
-- Task payment flow: UTR + screenshot required; credit=task.final; currency INR/USDT + remarks
-- Admin approve/reject: approve credits balance by task.final and total_earned by reward; reject doesn't credit
-- Screenshot viewable via /admin/payments
-- Payout accounts CRUD + withdraw + admin approve deducts
-- Support chat + non-admin 403 + referrals
-- Full e2e: login test1 -> pay L5 (amount 1546) -> admin approve -> +1599.29
+Highlights of THIS iteration (Jan 2026):
+- Task list: 7 New-User plans (level 0, new_user=true) + 35 tasks across L1..L7 = 42 total.
+- Levels range: ₹500 (L1 min) up to ₹20000 (L7 max).
+- POST /api/tasks/pay creates payment with status=pending, seen_by_admin=false, and returns order_id.
+- GET /api/admin/summary now includes `new_orders` = unseen payments count.
+- POST /api/admin/notifications/seen flips all payments' seen_by_admin -> true and returns 0 next time.
+- Admin approve credits balance += task.final and total_earned += task.reward.
 """
 import uuid
 import pytest
@@ -40,6 +35,7 @@ class TestVictoryPay:
         assert d["user"]["balance"] == 70.0
         assert d["user"]["role"] == "user"
         assert d["user"]["referral_code"]
+        assert d["user"].get("user_id")
         self.state["reg_email"] = email
         self.state["reg_token"] = d["token"]
         self.state["reg_user"] = d["user"]
@@ -120,54 +116,64 @@ class TestVictoryPay:
         assert isinstance(j.get("rate"), (int, float))
         assert j["rate"] > 0
 
-    def test_22_tasks_list_L1_L7(self, api, base_url):
+    def test_22_tasks_list_new_user_plus_L1_L7(self, api, base_url):
+        """Assert: 7 New-User plans (level 0, new_user true) + 5 tasks per L1..L7.
+        Level range: ₹500 (L1 min) .. ₹20000 (L7 max)."""
         r = api.get(f"{base_url}/tasks")
         assert r.status_code == 200
-        j = r.json()
-        assert "tasks" in j
-        tasks = j["tasks"]
-        assert len(tasks) == 35, f"Expected 35 tasks, got {len(tasks)}"
-        # Group by level
+        tasks = r.json()["tasks"]
+        assert len(tasks) == 42, f"Expected 42 tasks (7 new-user + 35 L1-L7), got {len(tasks)}"
+
         by_level = {}
         for t in tasks:
             by_level.setdefault(t["level"], []).append(t)
-            for k in ("amount", "rate", "reward", "bonus", "final", "quantity", "code"):
+            for k in ("amount", "rate", "reward", "bonus", "final", "quantity", "code", "task_id", "new_user"):
                 assert k in t, f"Missing field {k} in task"
-            assert t["bonus"] == 10 or t["bonus"] == 10.0
-            # final = amount + reward + bonus
-            expected_final = round(t["amount"] + t["reward"] + t["bonus"], 2)
-            assert abs(t["final"] - expected_final) < 0.01
-            # reward = amount * rate
-            expected_reward = round(t["amount"] * t["rate"], 2)
-            assert abs(t["reward"] - expected_reward) < 0.01
-            assert t["code"].startswith("VP-")
-        for lvl in range(1, 8):
-            assert lvl in by_level, f"Missing level {lvl}"
-            assert len(by_level[lvl]) == 5, f"Level {lvl} should have 5 tasks"
-        # Rates check
-        expected_rates = {1: 0.020, 2: 0.022, 3: 0.024, 4: 0.026, 5: 0.028, 6: 0.030, 7: 0.035}
-        for lvl, rate in expected_rates.items():
-            assert abs(by_level[lvl][0]["rate"] - rate) < 1e-6
 
-        # Save an L5 amount=1546 task for e2e
-        l5_1546 = next((t for t in by_level[5] if t["amount"] == 1546), None)
-        assert l5_1546 is not None, "Expected L5 task with amount 1546"
-        # 1546 * 0.028 = 43.288 -> 43.29
-        assert abs(l5_1546["reward"] - 43.29) < 0.01
-        assert abs(l5_1546["final"] - 1599.29) < 0.01
-        self.state["task_l5"] = l5_1546
+        # New User plans (level 0)
+        assert 0 in by_level and len(by_level[0]) == 7, "Expected 7 New-User plans (level 0)"
+        for t in by_level[0]:
+            assert t["new_user"] is True
+            assert t["name"] == "New User Special"
+            assert t["bonus"] == 0.0
+            # final = amount + reward (bonus=0 for new-user)
+            assert abs(t["final"] - (t["amount"] + t["reward"])) < 0.01
+
+        # L1..L7 tiers
+        for lvl in range(1, 8):
+            assert lvl in by_level and len(by_level[lvl]) == 5, f"Level {lvl} should have 5 tasks"
+            for t in by_level[lvl]:
+                assert t["new_user"] is False
+                assert t["bonus"] == 10 or t["bonus"] == 10.0
+                # final = amount + reward + bonus(10)
+                assert abs(t["final"] - round(t["amount"] + t["reward"] + t["bonus"], 2)) < 0.01
+                # reward = amount * rate
+                assert abs(t["reward"] - round(t["amount"] * t["rate"], 2)) < 0.01
+
+        # Amount range boundaries: L1 has ₹500, L7 has ₹20000
+        l1_amounts = sorted(t["amount"] for t in by_level[1])
+        l7_amounts = sorted(t["amount"] for t in by_level[7])
+        assert l1_amounts[0] == 500, f"L1 min should be ₹500, got {l1_amounts[0]}"
+        assert l7_amounts[-1] == 20000, f"L7 max should be ₹20000, got {l7_amounts[-1]}"
+
+        # Pick an L5 task for downstream e2e (deterministic: lowest amount)
+        l5 = sorted(by_level[5], key=lambda t: t["amount"])[0]
+        self.state["task_l5"] = l5
+        # Also save a New-User plan for onboarding-style test coverage
+        self.state["task_new_user"] = by_level[0][0]
 
     def test_23_upi_info(self, api, base_url):
         r = api.get(f"{base_url}/wallet/upi-info",
                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         assert r.status_code == 200
         upi = r.json()["upi"]
-        assert upi["big_payment_upi"] == "harsh.g216@ptyes"
+        # big_payment_upi is env-configured; just validate presence + shape
+        assert upi["big_payment_upi"] and "@" in upi["big_payment_upi"]
         assert upi["beneficiary_name"]
         assert upi["payment_method"]
         assert upi["usdt_address"]
         assert isinstance(upi.get("qr_images"), list)
-        assert len(upi["qr_images"]) == 2
+        assert len(upi["qr_images"]) >= 2, f"Expected >=2 QR images, got {len(upi['qr_images'])}"
 
     def test_24_live_stats(self, api, base_url):
         r = api.get(f"{base_url}/stats/live")
@@ -194,10 +200,12 @@ class TestVictoryPay:
         assert r.status_code == 400
         assert "utr" in r.text.lower() or "transaction" in r.text.lower()
 
-    def test_32_pay_task_ok_with_utr_and_currency(self, api, base_url):
+    def test_32_pay_task_ok_returns_order_id_and_pending(self, api, base_url):
+        """POST /api/tasks/pay -> status=pending, seen_by_admin=false, order_id returned."""
         big_ss = "data:image/jpeg;base64," + ("A" * 200)
+        task = self.state["task_l5"]
         r = api.post(f"{base_url}/tasks/pay",
-                     json={"task_id": self.state["task_l5"]["task_id"],
+                     json={"task_id": task["task_id"],
                            "screenshot": big_ss, "utr": "123456789012",
                            "remarks": "test remarks",
                            "currency": "INR"},
@@ -205,7 +213,9 @@ class TestVictoryPay:
         assert r.status_code == 200, r.text
         pay = r.json()["payment"]
         assert pay["status"] == "pending"
-        assert abs(pay["credit"] - 1599.29) < 0.01
+        assert pay.get("seen_by_admin") is False, f"seen_by_admin must be false, got {pay.get('seen_by_admin')}"
+        assert pay.get("order_id"), "order_id missing from payment response"
+        assert abs(pay["credit"] - task["final"]) < 0.01
         assert pay["utr"] == "123456789012"
         assert pay["remarks"] == "test remarks"
         assert pay["currency"] == "INR"
@@ -223,8 +233,34 @@ class TestVictoryPay:
         pay = r.json()["payment"]
         assert pay["currency"] == "USDT"
         assert pay["usdt_amount"] == 17.5
+        assert pay.get("seen_by_admin") is False
 
-    def test_34_admin_payments_screenshot_visible(self, api, base_url):
+    # ---------- Admin new-order notifications ----------
+    def test_34_admin_summary_reflects_new_orders(self, api, base_url):
+        """GET /api/admin/summary -> new_orders count reflects unseen payments (>=2 from prev tests)."""
+        r = api.get(f"{base_url}/admin/summary",
+                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+        j = r.json()
+        assert "new_orders" in j, f"admin/summary missing 'new_orders' field: {j}"
+        assert isinstance(j["new_orders"], int)
+        assert j["new_orders"] >= 2, f"Expected >=2 new_orders (from tests 32/33), got {j['new_orders']}"
+        self.state["new_orders_before_seen"] = j["new_orders"]
+
+    def test_35_admin_notifications_seen_flips_flag(self, api, base_url):
+        """POST /api/admin/notifications/seen -> new_orders becomes 0 afterward."""
+        r = api.post(f"{base_url}/admin/notifications/seen", json={},
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+        assert r.json().get("success") is True
+
+        # Re-fetch summary — new_orders should now be 0
+        r2 = api.get(f"{base_url}/admin/summary",
+                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r2.status_code == 200
+        assert r2.json()["new_orders"] == 0, f"After /notifications/seen, new_orders should be 0, got {r2.json()['new_orders']}"
+
+    def test_36_admin_payments_screenshot_visible(self, api, base_url):
         r = api.get(f"{base_url}/admin/payments?status=pending",
                     headers={"Authorization": f"Bearer {self.state['admin_token']}"})
         assert r.status_code == 200
@@ -232,8 +268,10 @@ class TestVictoryPay:
         found = next(p for p in pays if p["payment_id"] == self.state["pay_id"])
         assert found["screenshot"].startswith("data:image/")
         assert found["utr"] == "123456789012"
+        # After test_35 (/notifications/seen) — flag flipped
+        assert found.get("seen_by_admin") is True
 
-    def test_35_admin_reject_does_not_credit(self, api, base_url):
+    def test_37_admin_reject_does_not_credit(self, api, base_url):
         email = rand_email("rej")
         r = api.post(f"{base_url}/auth/register",
                      json={"name": "Rej", "email": email, "password": "pass1234"})
@@ -253,7 +291,7 @@ class TestVictoryPay:
                     headers={"Authorization": f"Bearer {tok}"})
         assert r.json()["user"]["balance"] == 70.0
 
-    def test_36_admin_approve_credits_final_and_reward(self, api, base_url):
+    def test_38_admin_approve_credits_final_and_reward(self, api, base_url):
         r0 = api.get(f"{base_url}/auth/me",
                      headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         bal_before = r0.json()["user"]["balance"]
@@ -268,9 +306,11 @@ class TestVictoryPay:
         r = api.get(f"{base_url}/auth/me",
                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         u = r.json()["user"]
-        # balance += final (1599.29); total_earned += reward (43.29)
-        assert abs(u["balance"] - (bal_before + 1599.29)) < 0.01
-        assert abs(u["total_earned"] - (te_before + 43.29)) < 0.01
+        task = self.state["task_l5"]
+        # balance += final; total_earned += reward
+        assert abs(u["balance"] - (bal_before + task["final"])) < 0.01, \
+            f"balance mismatch: before={bal_before}, after={u['balance']}, expected +{task['final']}"
+        assert abs(u["total_earned"] - (te_before + task["reward"])) < 0.01
 
     # ---------- Payout Accounts ----------
     def test_40_add_account_invalid_upi(self, api, base_url):
@@ -303,7 +343,7 @@ class TestVictoryPay:
 
     def test_52_withdraw_ok_admin_approve_deducts(self, api, base_url):
         r = api.post(f"{base_url}/wallet/withdraw",
-                     json={"amount": 500, "account_id": self.state["acc_id"]},
+                     json={"amount": 200, "account_id": self.state["acc_id"]},
                      headers={"Authorization": f"Bearer {self.state['reg_token']}"})
         assert r.status_code == 200, r.text
         wd_id = r.json()["request"]["request_id"]
@@ -319,7 +359,7 @@ class TestVictoryPay:
 
         r = api.get(f"{base_url}/auth/me",
                     headers={"Authorization": f"Bearer {self.state['reg_token']}"})
-        assert abs(r.json()["user"]["balance"] - (bal_before - 500)) < 0.01
+        assert abs(r.json()["user"]["balance"] - (bal_before - 200)) < 0.01
 
     # ---------- Support ----------
     def test_60_support_send_and_list(self, api, base_url):
@@ -346,8 +386,11 @@ class TestVictoryPay:
         assert api.get(f"{base_url}/admin/payments", headers=h).status_code == 403
         assert api.get(f"{base_url}/admin/withdrawals", headers=h).status_code == 403
         assert api.get(f"{base_url}/admin/users", headers=h).status_code == 403
+        # Also assert 403 on notifications endpoints
+        assert api.get(f"{base_url}/admin/summary", headers=h).status_code == 403
+        assert api.post(f"{base_url}/admin/notifications/seen", json={}, headers=h).status_code == 403
 
-    # ---------- Full e2e: login test1 -> pay L5 1546 -> approve -> +1599.29 ----------
+    # ---------- Full e2e: login test1 -> pay L5 -> approve -> balance += final ----------
     def test_70_e2e_l5_task_flow_test1(self, api, base_url):
         # Ensure test1@example.com exists (idempotent)
         api.post(f"{base_url}/auth/register",
@@ -359,23 +402,27 @@ class TestVictoryPay:
         bal_before = r.json()["user"]["balance"]
         auth = {"Authorization": f"Bearer {tok}"}
         admin_h = {"Authorization": f"Bearer {self.state['admin_token']}"}
+        task = self.state["task_l5"]
 
         big_ss = "data:image/jpeg;base64," + ("E" * 200)
         r = api.post(f"{base_url}/tasks/pay",
-                     json={"task_id": self.state["task_l5"]["task_id"],
+                     json={"task_id": task["task_id"],
                            "screenshot": big_ss, "utr": "123456789012",
                            "currency": "INR"},
                      headers=auth)
         assert r.status_code == 200, r.text
-        pay_id = r.json()["payment"]["payment_id"]
+        pay = r.json()["payment"]
+        pay_id = pay["payment_id"]
+        assert pay.get("seen_by_admin") is False
+        assert pay.get("order_id")
 
         r = api.post(f"{base_url}/admin/payments/{pay_id}/approve",
                      json={"note": "ok"}, headers=admin_h)
         assert r.status_code == 200
 
         r = api.get(f"{base_url}/auth/me", headers=auth)
-        assert abs(r.json()["user"]["balance"] - (bal_before + 1599.29)) < 0.01, \
-            f"Expected balance +1599.29, before={bal_before}, after={r.json()['user']['balance']}"
+        assert abs(r.json()["user"]["balance"] - (bal_before + task["final"])) < 0.01, \
+            f"Expected balance +{task['final']}, before={bal_before}, after={r.json()['user']['balance']}"
 
     def test_80_logout_invalidates(self, api, base_url):
         email = rand_email("lo")

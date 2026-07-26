@@ -13,6 +13,9 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/context/AuthContext";
 import { ToastProvider } from "@/src/components/Toast";
 import { AnimatedIntro } from "@/src/components/AnimatedIntro";
+import { Onboarding } from "@/src/components/Onboarding";
+import { setupInvestReminders } from "@/src/notifications";
+import { storage } from "@/src/utils/storage";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -22,6 +25,7 @@ function RootNavigator() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -36,19 +40,41 @@ function RootNavigator() {
     }
   }, [user, loading, segments, router]);
 
+  // First-time onboarding for regular users
+  useEffect(() => {
+    if (loading || !user || user.role === "admin") {
+      setShowOnboarding(false);
+      return;
+    }
+    let active = true;
+    (async () => {
+      const seen = await storage.getItem(`onboarding_seen_${user.user_id}`, false);
+      if (active && !seen) setShowOnboarding(true);
+    })();
+    return () => { active = false; };
+  }, [user, loading]);
+
+  const finishOnboarding = async () => {
+    if (user) await storage.setItem(`onboarding_seen_${user.user_id}`, true);
+    setShowOnboarding(false);
+  };
+
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="payment/[taskId]" options={{ presentation: "card" }} />
-      <Stack.Screen name="accounts" options={{ presentation: "card" }} />
-      <Stack.Screen name="help" options={{ presentation: "card" }} />
-      <Stack.Screen name="wallet/withdraw" options={{ presentation: "card" }} />
-      <Stack.Screen name="wallet/history" options={{ presentation: "card" }} />
-      <Stack.Screen name="admin/index" options={{ presentation: "card" }} />
-      <Stack.Screen name="admin/support/[userId]" options={{ presentation: "card" }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="payment/[taskId]" options={{ presentation: "card" }} />
+        <Stack.Screen name="accounts" options={{ presentation: "card" }} />
+        <Stack.Screen name="help" options={{ presentation: "card" }} />
+        <Stack.Screen name="wallet/withdraw" options={{ presentation: "card" }} />
+        <Stack.Screen name="wallet/history" options={{ presentation: "card" }} />
+        <Stack.Screen name="admin/index" options={{ presentation: "card" }} />
+        <Stack.Screen name="admin/support/[userId]" options={{ presentation: "card" }} />
+      </Stack>
+      {showOnboarding && <Onboarding onDone={finishOnboarding} />}
+    </>
   );
 }
 
@@ -72,6 +98,10 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [iconsReady, fontsReady]);
+
+  useEffect(() => {
+    setupInvestReminders();
+  }, []);
 
   if (!iconsReady || !fontsReady) return null;
 

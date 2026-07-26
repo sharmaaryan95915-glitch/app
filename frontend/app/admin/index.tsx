@@ -27,6 +27,7 @@ export default function Admin() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
+  const [newOrders, setNewOrders] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -42,6 +43,12 @@ export default function Admin() {
       setWithdrawals(w.withdrawals || []);
       setThreads(t.threads || []);
       setUsers(u.users || []);
+      // Capture unseen new orders, then mark them seen for the next visit
+      const unseen = s.new_orders || 0;
+      setNewOrders(unseen);
+      if (unseen > 0) {
+        try { await api.post("/admin/notifications/seen", {}); } catch {}
+      }
     } catch (e: any) {
       toast.show(e.message || "Failed to load", "error");
     }
@@ -88,7 +95,12 @@ export default function Admin() {
           <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.headerTitle}>Admin Panel</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.bellWrap}>
+          <Ionicons name="notifications" size={22} color={newOrders > 0 ? colors.brand : colors.muted} />
+          {newOrders > 0 && (
+            <View style={styles.bellBadge}><Text style={styles.bellBadgeText}>{newOrders > 99 ? "99+" : newOrders}</Text></View>
+          )}
+        </View>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segment}>
@@ -107,8 +119,19 @@ export default function Admin() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
         >
-          {tab === "payments" && (payments.length === 0 ? <Empty label="No pending payments" /> :
-            payments.map((p) => (
+          {tab === "payments" && (
+            <>
+              {newOrders > 0 && (
+                <View style={styles.alertBanner} testID="new-orders-alert">
+                  <View style={styles.alertIcon}><Ionicons name="flash" size={18} color="#fff" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertTitle}>{newOrders} New Order{newOrders > 1 ? "s" : ""} Received 🔔</Text>
+                    <Text style={styles.alertSub}>Review the payment screenshots below and approve or reject.</Text>
+                  </View>
+                </View>
+              )}
+              {payments.length === 0 ? <Empty label="No pending payments" /> :
+              payments.map((p) => (
               <View key={p.payment_id} style={styles.card} testID={`admin-payment-${p.payment_id}`}>
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1 }}>
@@ -136,7 +159,8 @@ export default function Admin() {
                   </Pressable>
                 </View>
               </View>
-            ))
+            ))}
+            </>
           )}
 
           {tab === "withdrawals" && (withdrawals.length === 0 ? <Empty label="No pending withdrawals" /> :
@@ -219,6 +243,13 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   headerTitle: { color: colors.onSurface, fontFamily: fonts.displaySemi, fontSize: 18 },
+  bellWrap: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  bellBadge: { position: "absolute", top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.error, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  bellBadgeText: { color: "#fff", fontFamily: fonts.semibold, fontSize: 10 },
+  alertBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brand, padding: spacing.md, marginBottom: spacing.lg },
+  alertIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center" },
+  alertTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 14 },
+  alertSub: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: 12, marginTop: 2 },
   segment: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, gap: spacing.sm },
   segBtn: { height: 38, borderRadius: radius.pill, paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
   segActive: { backgroundColor: colors.brand, borderColor: colors.brand },
