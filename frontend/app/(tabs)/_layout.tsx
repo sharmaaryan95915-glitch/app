@@ -1,9 +1,8 @@
 import { Tabs } from "expo-router";
-import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, fonts } from "@/src/theme";
+import { colors, fonts, shadow } from "@/src/theme";
 
 export default function TabsLayout() {
   return (
@@ -14,50 +13,26 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
           position: "absolute",
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
-          backgroundColor: Platform.OS === "android" ? colors.surfaceSecondary : "transparent",
-          elevation: 0,
-          height: 64 + (Platform.OS === "ios" ? 20 : 0),
+          left: 14,
+          right: 14,
+          bottom: Platform.OS === "ios" ? 26 : 16,
+          height: 66,
+          borderRadius: 22,
+          borderTopWidth: 0,
+          backgroundColor: colors.surfaceSecondary,
           paddingTop: 8,
+          paddingBottom: 8,
+          ...shadow.card,
         },
-        tabBarLabelStyle: { fontFamily: fonts.medium, fontSize: 11 },
-        tabBarBackground: () =>
-          Platform.OS === "ios" ? (
-            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceSecondary }]} />
-          ),
+        tabBarItemStyle: { borderRadius: 16 },
+        tabBarLabelStyle: { fontFamily: fonts.medium, fontSize: 11, marginTop: 2 },
+        tabBarBackground: () => null,
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="plans"
-        options={{
-          title: "Tasks",
-          tabBarIcon: ({ color, size }) => <Ionicons name="layers" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="referrals"
-        options={{
-          title: "Referrals",
-          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} /> }} />
+      <Tabs.Screen name="plans" options={{ title: "Buy RP", tabBarIcon: ({ color, size }) => <Ionicons name="trending-up" size={size} color={color} /> }} />
+      <Tabs.Screen name="referrals" options={{ title: "Sell RP", tabBarIcon: ({ color, size }) => <Ionicons name="wallet" size={size} color={color} /> }} />
+      <Tabs.Screen name="profile" options={{ title: "Mine", tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} /> }} />
     </Tabs>
   );
 }

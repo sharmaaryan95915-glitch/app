@@ -9,15 +9,13 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, fonts, radius, spacing } from "@/src/theme";
+import { colors, fonts, radius, shadow, spacing } from "@/src/theme";
 
 export function GlassCard({
   children,
   style,
-  intensity = 24,
   testID,
 }: {
   children: React.ReactNode;
@@ -26,10 +24,8 @@ export function GlassCard({
   testID?: string;
 }) {
   return (
-    <View style={[styles.glassWrap, style]} testID={testID}>
-      <BlurView intensity={intensity} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={styles.glassTint} />
-      <View style={styles.glassInner}>{children}</View>
+    <View style={[styles.card, style]} testID={testID}>
+      {children}
     </View>
   );
 }
@@ -55,14 +51,11 @@ export function GoldButton({
 }) {
   const isDisabled = disabled || loading;
   const bg =
-    variant === "primary"
-      ? colors.brand
-      : variant === "success"
-      ? colors.success
-      : variant === "danger"
-      ? colors.error
+    variant === "primary" ? colors.brand
+      : variant === "success" ? colors.success
+      : variant === "danger" ? colors.error
       : "transparent";
-  const fg = variant === "outline" ? colors.brand : variant === "primary" ? colors.onBrandPrimary : "#FFFFFF";
+  const fg = variant === "outline" ? colors.brand : "#FFFFFF";
   return (
     <Pressable
       testID={testID}
@@ -70,7 +63,7 @@ export function GoldButton({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.btn,
-        { backgroundColor: bg, opacity: isDisabled ? 0.55 : pressed ? 0.85 : 1 },
+        { backgroundColor: bg, opacity: isDisabled ? 0.5 : pressed ? 0.9 : 1 },
         variant === "outline" && styles.btnOutline,
         style,
       ]}
@@ -98,11 +91,7 @@ export function Field({
       {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <View style={styles.fieldWrap}>
         {icon && <Ionicons name={icon} size={18} color={colors.muted} style={{ marginRight: spacing.sm }} />}
-        <TextInput
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          {...rest}
-        />
+        <TextInput placeholderTextColor={colors.muted} style={styles.input} {...rest} />
       </View>
     </View>
   );
@@ -133,15 +122,12 @@ export function Chip({
 }
 
 const styles = StyleSheet.create({
-  glassWrap: {
+  card: {
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "rgba(30,30,30,0.6)",
+    padding: spacing.lg,
+    ...shadow.card,
   },
-  glassTint: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(30,30,30,0.55)" },
-  glassInner: { padding: spacing.lg },
   btn: {
     height: 54,
     borderRadius: radius.md,
@@ -149,11 +135,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
-  btnOutline: { borderWidth: 1, borderColor: colors.brand },
+  btnOutline: { borderWidth: 1.5, borderColor: colors.brand },
   btnRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   btnLabel: { fontFamily: fonts.semibold, fontSize: 16 },
   fieldLabel: {
-    color: colors.onSurfaceTertiary,
+    color: colors.onSurfaceSecondary,
     fontFamily: fonts.medium,
     fontSize: 13,
     marginBottom: spacing.sm,
@@ -178,6 +164,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   chipActive: { backgroundColor: colors.brand },
-  chipInactive: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
+  chipInactive: { backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
   chipText: { fontFamily: fonts.medium, fontSize: 13 },
 });

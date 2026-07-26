@@ -58,6 +58,7 @@ export default function RootLayout() {
   const [fontsLoaded, fontsError] = useFonts({
     "Fraunces-Bold": require("../assets/fonts/Fraunces-Bold.ttf"),
     "Fraunces-SemiBold": require("../assets/fonts/Fraunces-SemiBold.ttf"),
+    "Geist-Bold": require("../assets/fonts/Geist-Bold.ttf"),
     "Geist-Regular": require("../assets/fonts/Geist-Regular.ttf"),
     "Geist-Medium": require("../assets/fonts/Geist-Medium.ttf"),
     "Geist-SemiBold": require("../assets/fonts/Geist-SemiBold.ttf"),
@@ -81,7 +82,7 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
           <AuthProvider>
             <ToastProvider>
-              <StatusBar style="light" />
+              <StatusBar style="dark" />
               <View style={{ flex: 1, backgroundColor: colors.surface }}>
                 <RootNavigator />
               </View>

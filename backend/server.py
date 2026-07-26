@@ -35,6 +35,11 @@ DAILY_RATE = 0.04
 SESSION_DAYS = 30
 TELEGRAM_LINK = "https://t.me/+Kwsy2cWqzQRmYmY9"
 BIG_PAYMENT_UPI = "harsh.g216@ptyes"
+BENEFICIARY_NAME = "Harsh Gupta"
+USDT_ADDRESS = "TXk8rQSAztBGkFqmT8 dummy".replace(" ", "")
+USDT_FALLBACK_RATE = 91.5
+LEVEL_RATES = {1: 0.020, 2: 0.022, 3: 0.024, 4: 0.026, 5: 0.028, 6: 0.030, 7: 0.035}
+LEVEL_BONUS = 10.0
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -163,6 +168,10 @@ class GoogleSessionInput(BaseModel):
 class TaskPayInput(BaseModel):
     task_id: str
     screenshot: str  # base64 data url
+    utr: str
+    remarks: Optional[str] = None
+    currency: Optional[str] = "INR"  # INR | USDT
+    usdt_amount: Optional[float] = None
     method: Optional[str] = None
 
 
@@ -264,17 +273,37 @@ async def logout(authorization: Optional[str] = Header(None)):
 
 
 # ---------------- Config / Tasks ----------------
+_usdt_cache = {"rate": USDT_FALLBACK_RATE, "ts": 0.0}
+
+
 @api_router.get("/config")
 async def get_config():
-    return {"telegram": TELEGRAM_LINK}
+    return {"telegram": TELEGRAM_LINK, "beneficiary_name": BENEFICIARY_NAME,
+            "payment_method": "UPI / QR", "usdt_address": USDT_ADDRESS}
+
+
+@api_router.get("/rates/usdt-inr")
+async def usdt_inr_rate():
+    import time
+    now = time.time()
+    if now - _usdt_cache["ts"] < 60:
+        return {"rate": _usdt_cache["rate"], "cached": True}
+    try:
+        async with httpx.AsyncClient(timeout=8) as hc:
+            r = await hc.get("https://api.coingecko.com/api/v3/simple/price",
+                             params={"ids": "tether", "vs_currencies": "inr"})
+        rate = float(r.json()["tether"]["inr"])
+        _usdt_cache["rate"] = round(rate, 2)
+        _usdt_cache["ts"] = now
+        return {"rate": _usdt_cache["rate"], "cached": False}
+    except Exception:
+        return {"rate": _usdt_cache["rate"], "cached": True, "fallback": True}
 
 
 @api_router.get("/tasks")
 async def list_tasks():
-    tasks = await db.tasks.find({}, {"_id": 0}).sort([("category", 1), ("order", 1)]).to_list(200)
-    reward = [t for t in tasks if t["category"] == "reward"]
-    daily = [t for t in tasks if t["category"] == "daily"]
-    return {"reward": reward, "daily": daily}
+    tasks = await db.tasks.find({}, {"_id": 0}).sort([("level", 1), ("order", 1)]).to_list(300)
+    return {"tasks": tasks}
 
 
 @api_router.get("/tasks/my-payments")
@@ -297,17 +326,23 @@ async def pay_task(data: TaskPayInput, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Task not found")
     if not data.screenshot or len(data.screenshot) < 50:
         raise HTTPException(status_code=400, detail="Please attach a valid payment screenshot")
-    credit = round(task["amount"] + task["reward"], 2)
+    if not data.utr or len(data.utr.strip()) < 6:
+        raise HTTPException(status_code=400, detail="Enter a valid UTR / Transaction ID")
+    credit = round(task.get("final", task["amount"] + task["reward"]), 2)
     req = {
         "payment_id": new_id("pay"), "user_id": user["user_id"], "user_name": user["name"],
         "user_email": user["email"], "task_id": task["task_id"], "task_name": task["name"],
-        "category": task["category"], "amount": task["amount"], "reward": task["reward"],
-        "credit": credit, "screenshot": data.screenshot, "method": data.method,
+        "level": task.get("level"), "amount": task["amount"], "reward": task["reward"],
+        "bonus": task.get("bonus", 0), "credit": credit,
+        "utr": data.utr.strip(), "remarks": (data.remarks or "").strip(),
+        "currency": data.currency or "INR", "usdt_amount": data.usdt_amount,
+        "screenshot": data.screenshot, "method": data.method,
         "status": "pending", "note": None, "created_at": iso(now_utc()),
     }
     await db.task_payments.insert_one(req)
     out = {k: v for k, v in req.items() if k not in ("screenshot", "_id")}
     return {"payment": out}
+
 
 
 # ---------------- Wallet ----------------
@@ -324,7 +359,10 @@ async def upi_info(user: dict = Depends(get_current_user)):
     return {"upi": {
         "upi_id": val.get("upi_id", BIG_PAYMENT_UPI),
         "upi_name": val.get("upi_name", "Victory Pay"),
+        "beneficiary_name": BENEFICIARY_NAME,
+        "payment_method": "UPI / QR Payment",
         "big_payment_upi": BIG_PAYMENT_UPI,
+        "usdt_address": USDT_ADDRESS,
         "qr_images": val.get("qr_images", []),
     }}
 
@@ -573,15 +611,16 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"],
 
 
 # ---------------- Startup / Seed ----------------
-REWARD_PLANS = [
-    {"name": "Starter Boost", "amount": 1200, "reward": 120, "trending": False, "tag": "Entry"},
-    {"name": "Silver Plan", "amount": 1900, "reward": 210, "trending": False, "tag": "Popular"},
-    {"name": "Gold Plan", "amount": 2600, "reward": 310, "trending": False, "tag": "Best Value"},
-    {"name": "Trending Elite", "amount": 3500, "reward": 750, "trending": True, "tag": "🔥 For New Users"},
-    {"name": "Platinum Plan", "amount": 6500, "reward": 900, "trending": False, "tag": "Premium"},
-    {"name": "Victory Elite", "amount": 8500, "reward": 1250, "trending": False, "tag": "Max Rewards"},
-]
-DAILY_AMOUNTS = [500, 600, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
+# Amount ranges per level (L1..L7) — increasing order sizes.
+LEVEL_AMOUNTS = {
+    1: [300, 500, 700, 900, 1100],
+    2: [800, 1000, 1200, 1400, 1600],
+    3: [1200, 1500, 1800, 2100, 2400],
+    4: [2000, 2400, 2800, 3200, 3600],
+    5: [1546, 1934, 2000, 2554, 3000],
+    6: [3500, 4200, 5000, 6000, 7000],
+    7: [6500, 7500, 8500, 10000, 12000],
+}
 
 
 @app.on_event("startup")
@@ -591,25 +630,20 @@ async def startup():
     await db.users.create_index("referral_code")
     await db.user_sessions.create_index("session_token", unique=True)
 
-    # Reseed tasks (drop + insert to reflect updated amounts/rewards)
+    # Reseed tasks as L1-L7 levels
     await db.tasks.delete_many({})
-    order = 0
-    for p in REWARD_PLANS:
-        await db.tasks.insert_one({
-            "task_id": new_id("task"), "category": "reward", "name": p["name"],
-            "amount": p["amount"], "reward": p["reward"], "trending": p["trending"],
-            "tag": p["tag"], "code": gen_task_code(), "order": order,
-        })
-        order += 1
-    order = 0
-    for amt in DAILY_AMOUNTS:
-        await db.tasks.insert_one({
-            "task_id": new_id("task"), "category": "daily", "name": f"Daily Task ₹{amt}",
-            "amount": amt, "reward": round(amt * DAILY_RATE), "trending": False,
-            "tag": "4% Return", "code": gen_task_code(), "order": order,
-        })
-        order += 1
-    logger.info("Reseeded tasks")
+    for level, amounts in LEVEL_AMOUNTS.items():
+        rate = LEVEL_RATES[level]
+        for order, amt in enumerate(amounts):
+            reward = round(amt * rate, 2)
+            final = round(amt + reward + LEVEL_BONUS, 2)
+            await db.tasks.insert_one({
+                "task_id": new_id("task"), "level": level, "name": f"L{level} Order",
+                "amount": float(amt), "rate": rate, "reward": reward,
+                "bonus": LEVEL_BONUS, "final": final,
+                "quantity": random.randint(1, 20), "code": gen_task_code(), "order": order,
+            })
+    logger.info("Reseeded tasks with L1-L7 levels")
 
     # Admin
     admin = await db.users.find_one({"email": ADMIN_EMAIL.lower()})

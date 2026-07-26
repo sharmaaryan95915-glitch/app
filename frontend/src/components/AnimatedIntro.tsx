@@ -52,7 +52,7 @@ export function AnimatedIntro({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.root, rootStyle]} testID="intro-animation">
-      <LinearGradient colors={["#161206", colors.surface, "#0c0c0c"]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={["#EAFBF3", "#FFFFFF", colors.surface]} style={StyleSheet.absoluteFill} />
       <View style={styles.center}>
         <Animated.View style={[styles.ring, ringStyle]} />
         <Animated.View style={[styles.logo, logoStyle]}>

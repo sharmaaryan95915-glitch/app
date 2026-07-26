@@ -1,30 +1,37 @@
-// Victory Pay — Luxe DARK theme tokens (from design_guidelines.json)
+// Victory Pay — LIGHT green fintech theme (RynPay-style reference)
 
 export const colors = {
-  surface: "#121212",
-  onSurface: "#FFFFFF",
-  surfaceSecondary: "#1E1E1E",
-  onSurfaceSecondary: "#E0E0E0",
-  surfaceTertiary: "#2C2C2C",
-  onSurfaceTertiary: "#BDBDBD",
-  surfaceInverse: "#FFFFFF",
-  onSurfaceInverse: "#121212",
-  brand: "#D4AF37",
-  brandPrimary: "#D4AF37",
-  onBrandPrimary: "#121212",
-  brandSecondary: "#AA8C2C",
-  brandTertiary: "#4A3E15",
-  onBrandTertiary: "#E2C86F",
-  success: "#059669",
+  surface: "#F2F3F7",
+  onSurface: "#141821",
+  surfaceSecondary: "#FFFFFF",
+  onSurfaceSecondary: "#3A3F4A",
+  surfaceTertiary: "#EEF0F4",
+  onSurfaceTertiary: "#6B7280",
+  surfaceInverse: "#141821",
+  onSurfaceInverse: "#FFFFFF",
+
+  brand: "#0BA36B",
+  brandPrimary: "#0BA36B",
+  onBrandPrimary: "#FFFFFF",
+  brandSecondary: "#0A8F5E",
+  brandTertiary: "#E3F5EC",
+  onBrandTertiary: "#0A7D53",
+
+  accent: "#2F6BFF",
+  accentTint: "#E8EEFF",
+  onAccent: "#FFFFFF",
+
+  success: "#0BA36B",
   onSuccess: "#FFFFFF",
-  warning: "#D97706",
-  error: "#DC2626",
+  warning: "#E2A100",
+  error: "#E23744",
   onError: "#FFFFFF",
-  info: "#0D9488",
-  border: "#2C2C2C",
-  borderStrong: "#4A4A4A",
-  divider: "#1E1E1E",
-  muted: "#8A8A8A",
+  info: "#2F6BFF",
+
+  border: "#E6E8EE",
+  borderStrong: "#D1D5DB",
+  divider: "#EEF0F4",
+  muted: "#9AA1AC",
 };
 
 export const spacing = {
@@ -38,25 +45,41 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 6,
-  md: 12,
+  sm: 8,
+  md: 14,
   lg: 20,
   pill: 999,
 };
 
 export const fonts = {
-  display: "Fraunces-Bold",
-  displaySemi: "Fraunces-SemiBold",
+  display: "Geist-Bold",
+  displaySemi: "Geist-SemiBold",
   regular: "Geist-Regular",
   medium: "Geist-Medium",
   semibold: "Geist-SemiBold",
+  bold: "Geist-Bold",
+};
+
+export const shadow = {
+  card: {
+    shadowColor: "#1B2733",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  soft: {
+    shadowColor: "#1B2733",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
 };
 
 export const IMAGES = {
-  logo:
-    "https://images.unsplash.com/photo-1714548474550-d533620651c7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwZ29sZCUyMFYlMjBsb2dvJTIwdHJhbnNwYXJlbnR8ZW58MHx8fHwxNzg0ODc3MDUxfDA&ixlib=rb-4.1.0&q=85",
   heroBg:
-    "https://images.unsplash.com/photo-1761437855740-c894da924d79?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBncmVlbiUyMGdvbGQlMjBnZW9tZXRyaWMlMjB0ZXh0dXJlfGVufDB8fHx8MTc4NDg3NzA1MXww&ixlib=rb-4.1.0&q=85",
+    "https://images.unsplash.com/photo-1761437855740-c894da924d79?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
   emptyWallet:
     "https://images.pexels.com/photos/6289030/pexels-photo-6289030.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
 };
@@ -64,4 +87,9 @@ export const IMAGES = {
 export const money = (n: number | undefined | null): string => {
   const v = Number(n ?? 0);
   return "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+};
+
+export const rp = (n: number | undefined | null): string => {
+  const v = Number(n ?? 0);
+  return v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " RP";
 };
