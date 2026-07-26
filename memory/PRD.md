@@ -1,38 +1,31 @@
 # Victory Pay — PRD
 
 ## Original Problem Statement
-Convert the Victory Pay website (https://victory-pay-earning-platfroms-legall.lovable.app) into an Expo mobile app. A premium fintech rewards/earning wallet for Indian users (₹ INR).
-
-## User Choices
-- Auth: Email+password (JWT/session) AND Emergent Google login.
-- Deposits: Manual UPI — now via TASK PAYMENT flow (QR + screenshot + admin approval).
-- Admin panel: Yes.
-- Design: Fresh mobile redesign — Luxe DARK glass theme (gold #D4AF37), Fraunces + Geist fonts.
-- Reward on approval: user credited (amount + reward). Screenshot = declaration + admin manual review.
+Convert the Victory Pay website into an Expo mobile app — a premium fintech rewards/earning wallet (₹ INR). Later fully redesigned to a LIGHT green fintech style (RynPay reference) with Buy RP / Sell RP levels.
 
 ## Architecture
-- Backend: FastAPI + MongoDB (motor). Unified session tokens in `user_sessions`. Collections: users, tasks, task_payments, plan_activations, transactions, withdraw_requests, payout_accounts, support_messages, app_config.
-- Frontend: Expo Router (bottom tabs), reanimated animations, expo-blur glass, expo-image-picker, keyboard-controller.
+- Backend: FastAPI + MongoDB (motor). Session tokens in `user_sessions`. Collections: users, tasks (L1–L7), task_payments, plan_activations, transactions, withdraw_requests, payout_accounts, support_messages, app_config.
+- Frontend: Expo Router (floating light tab bar: Home / Buy RP / Sell RP / Mine), reanimated animations, expo-image-picker, keyboard-controller, CoinGecko live USDT rate.
+- Theme: LIGHT — white cards, #F2F3F7 bg, green #0BA36B primary, blue accents, Geist font.
 
-## Implemented (2026-07-24)
-- Premium animated intro on launch.
-- Auth: register (₹70 bonus), login, Google, referral (₹300 to referrer).
-- Home: balance card, LIVE payouts ticker, live platform stats (active earners / paid out / payouts today), quick actions, my stats, recent activity.
-- Tasks tab: Premium Plans (₹1200→120, 1900→210, 2600→310, 3500→750 trending, 6500→900, 8500→1250) + Daily Tasks (₹500..2000 @4%), fancy codes on each.
-- Payment screen: dual QR (PhonePe/GPay random), green profit pulse, UPI `harsh.g216@ptyes`, screenshot upload + real-time declaration, submit.
-- Payout Accounts (PhonePe/GPay/Paytm/FamPay/Mobikwik/Bank), used in withdrawal.
-- Withdraw: select payout account, admin-approved.
-- Referrals: code share/copy, invited list.
-- Help & Support: Telegram link, FAQ, in-app support chat (user↔admin).
-- Admin panel: Payments (screenshot review + approve credits amount+reward), Withdrawals, Support threads (reply), Users.
-- Verified: 32/32 backend tests + frontend flows.
+## Implemented (updated 2026-07-26)
+- Premium intro animation (light/green).
+- Auth: register (₹70 bonus), login, Google, referral (₹300).
+- Home: green header + balance, Daily Rewards / USDT Top-up / Deposit USDT banners, stats card (Buy qty/amount, Sell today, Total revenue), Tutorial.
+- Buy RP: L1–L7 level tabs, sort + refresh, order cards (Order amount, quantity, Reward + ₹10 bonus, Final RP, fancy code), Receive → payment.
+- Payment: UPI/INR ↔ USDT toggle (live CoinGecko rate), large QR + Change-QR (2 QRs), Payment Information (Beneficiary=Harsh Gupta, method, UPI harsh.g216@ptyes / USDT address, Amount), mandatory UTR + screenshot, optional Remarks, red Warning box, "Order Confirmed" success animation.
+- Sell RP: Today's Overview, Sell/Withdraw + Record, Wallet Information (empty state / list), Add Wallet, rules.
+- Mine: profile header, invite code copy/share, Current Balance + Withdraw, My Team banner, menu (Newbie Rewards, Bind Payment, History, Common Problem, Online Service, Official Channel), Admin entry, logout.
+- Payout accounts, withdraw (account-based, admin approved), support chat (user↔admin), admin panel (Payments w/ screenshot review crediting task.final, Withdrawals, Support, Users).
+- On payment approval: balance += final (amount+reward+₹10), total_earned += reward.
+- Verified: 33/33 backend + all frontend flows.
 
 ## Test Credentials
 - Admin: admin@victorypay.com / Admin@123
 - User: test1@example.com / pass123
 
 ## Backlog / Next
-- P1: Admin ability to edit QR/UPI config from app; push notifications (on request).
-- P1: Task payment status screen for users (track pending/approved/rejected with reason).
-- P2: Withdrawal min/limits config; KYC; anti-fraud on screenshots.
-- P2: Migrate remaining pointerEvents to style (done for intro/toast/payment).
+- P1: Admin edit QR/UPI/USDT-address & beneficiary from app.
+- P1: User order-status tracker (pending/approved/rejected + reason).
+- P2: Replace RN-web shadow*/pointerEvents deprecations with boxShadow (web-only cosmetic).
+- P2: Level unlock progression, withdrawal limits/KYC.
