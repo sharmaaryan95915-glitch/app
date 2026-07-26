@@ -194,10 +194,10 @@ export default function Payment() {
             )}
           </View>
           {qrList.length > 1 && (
-            <Pressable style={styles.changeQr} onPress={() => setQrIndex((i) => i + 1)} testID="change-qr-button">
-              <Ionicons name="swap-horizontal" size={15} color={colors.brand} />
-              <Text style={styles.changeQrText}>Change QR ({(qrIndex % qrList.length) + 1}/{qrList.length})</Text>
-            </Pressable>
+            <View style={styles.autoQrHint} testID="auto-qr-hint">
+              <Ionicons name="sync-circle" size={14} color={colors.brand} />
+              <Text style={styles.autoQrText}>QR auto-refreshes every few minutes</Text>
+            </View>
           )}
           <View style={styles.trustBadge}>
             <Ionicons name="shield-checkmark" size={14} color={colors.success} />
@@ -333,6 +333,8 @@ const styles = StyleSheet.create({
   qrPh: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },
   changeQr: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.lg, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: 8 },
   changeQrText: { color: colors.brand, fontFamily: fonts.semibold, fontSize: 13 },
+  autoQrHint: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.md },
+  autoQrText: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: 11 },
   trustBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   trustText: { color: colors.success, fontFamily: fonts.medium, fontSize: 12 },
   upiUnderQr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginTop: spacing.md, backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },

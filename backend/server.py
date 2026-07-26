@@ -341,7 +341,7 @@ async def pay_task(data: TaskPayInput, user: dict = Depends(get_current_user)):
         "utr": data.utr.strip(), "remarks": (data.remarks or "").strip(),
         "currency": data.currency or "INR", "usdt_amount": data.usdt_amount,
         "screenshot": data.screenshot, "method": data.method,
-        "status": "pending", "note": None, "created_at": iso(now_utc()),
+        "status": "pending", "note": None, "seen_by_admin": False, "created_at": iso(now_utc()),
     }
     await db.task_payments.insert_one(req)
     out = {k: v for k, v in req.items() if k not in ("screenshot", "_id")}
@@ -487,7 +487,21 @@ async def admin_summary(admin: dict = Depends(require_admin)):
         "pending_payments": await db.task_payments.count_documents({"status": "pending"}),
         "pending_withdrawals": await db.withdraw_requests.count_documents({"status": "pending"}),
         "open_support": await db.support_messages.count_documents({"sender": "user", "read_by_admin": False}),
+        "new_orders": await db.task_payments.count_documents({"seen_by_admin": False}),
     }
+
+
+@api_router.get("/admin/notifications")
+async def admin_notifications(admin: dict = Depends(require_admin)):
+    items = await db.task_payments.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    unseen = sum(1 for i in items if not i.get("seen_by_admin"))
+    return {"notifications": items, "unseen": unseen}
+
+
+@api_router.post("/admin/notifications/seen")
+async def admin_notifications_seen(admin: dict = Depends(require_admin)):
+    await db.task_payments.update_many({"seen_by_admin": False}, {"$set": {"seen_by_admin": True}})
+    return {"success": True}
 
 
 @api_router.get("/admin/payments")
@@ -615,16 +629,21 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"],
 
 
 # ---------------- Startup / Seed ----------------
-# Amount ranges per level (L1..L7) — increasing order sizes.
+# Amount ranges per level (L1..L7) — ₹500 up to ₹20000.
 LEVEL_AMOUNTS = {
-    1: [300, 500, 700, 900, 1100],
-    2: [800, 1000, 1200, 1400, 1600],
-    3: [1200, 1500, 1800, 2100, 2400],
-    4: [2000, 2400, 2800, 3200, 3600],
-    5: [1546, 1934, 2000, 2554, 3000],
-    6: [3500, 4200, 5000, 6000, 7000],
-    7: [6500, 7500, 8500, 10000, 12000],
+    1: [500, 600, 700, 800, 900],
+    2: [1000, 1100, 1200, 1300, 1400],
+    3: [1500, 1700, 1900, 2100, 2300],
+    4: [2500, 2800, 3100, 3400, 3700],
+    5: [4000, 4500, 5000, 5500, 6000],
+    6: [7000, 8000, 9000, 10000, 12000],
+    7: [14000, 16000, 18000, 19000, 20000],
 }
+# Special New-User plans: (pay_amount, profit_reward)
+NEW_USER_PLANS = [
+    (1250, 300), (2250, 400), (3350, 500), (5550, 650),
+    (6700, 700), (8700, 950), (10000, 1050),
+]
 
 
 @app.on_event("startup")
@@ -634,20 +653,28 @@ async def startup():
     await db.users.create_index("referral_code")
     await db.user_sessions.create_index("session_token", unique=True)
 
-    # Reseed tasks as L1-L7 levels
+    # Reseed tasks: New-User plans (level 0) + L1-L7 levels
     await db.tasks.delete_many({})
+    for order, (amt, reward) in enumerate(NEW_USER_PLANS):
+        final = round(amt + reward, 2)
+        await db.tasks.insert_one({
+            "task_id": new_id("task"), "level": 0, "new_user": True, "name": "New User Special",
+            "amount": float(amt), "rate": round(reward / amt, 4), "reward": float(reward),
+            "bonus": 0.0, "final": final, "quantity": random.randint(3, 25),
+            "code": gen_task_code(), "order": order,
+        })
     for level, amounts in LEVEL_AMOUNTS.items():
         rate = LEVEL_RATES[level]
         for order, amt in enumerate(amounts):
             reward = round(amt * rate, 2)
             final = round(amt + reward + LEVEL_BONUS, 2)
             await db.tasks.insert_one({
-                "task_id": new_id("task"), "level": level, "name": f"L{level} Order",
+                "task_id": new_id("task"), "level": level, "new_user": False, "name": f"L{level} Order",
                 "amount": float(amt), "rate": rate, "reward": reward,
                 "bonus": LEVEL_BONUS, "final": final,
                 "quantity": random.randint(1, 20), "code": gen_task_code(), "order": order,
             })
-    logger.info("Reseeded tasks with L1-L7 levels")
+    logger.info("Reseeded tasks: new-user + L1-L7 levels")
 
     # Admin
     admin = await db.users.find_one({"email": ADMIN_EMAIL.lower()})

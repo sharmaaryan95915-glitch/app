@@ -16,7 +16,7 @@ const METHODS = [
   { key: "Google Pay", color: "#1a73e8" },
   { key: "Paytm", color: "#00baf2" },
   { key: "FamPay", color: "#f9c74f" },
-  { key: "Mobikwik", color: "#e63946" },
+  { key: "Navi UPI", color: "#2a5cff" },
   { key: "Bank Account", color: "#2a9d8f" },
 ];
 
