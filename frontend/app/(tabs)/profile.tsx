@@ -42,6 +42,7 @@ export default function Mine() {
 
   const menu = [
     { icon: "gift-outline", label: "Newbie Rewards", onPress: () => router.push("/(tabs)/plans") },
+    { icon: "cube-outline", label: "My Orders", onPress: () => router.push("/orders") },
     { icon: "card-outline", label: "Bind Payment App", onPress: () => router.push("/accounts") },
     { icon: "receipt-outline", label: "Transaction History", onPress: () => router.push("/wallet/history") },
     { icon: "help-circle-outline", label: "Common Problem", onPress: () => router.push("/help") },

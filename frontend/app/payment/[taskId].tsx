@@ -91,13 +91,13 @@ export default function Payment() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // Auto-rotate QR randomly every 3 minutes
+  // Auto-rotate QR randomly every 2 minutes
   useEffect(() => {
     const n = upi?.qr_images?.length || 0;
     if (n < 2) return;
     const id = setInterval(() => {
       setQrIndex(() => Math.floor(Math.random() * n));
-    }, 180000);
+    }, 120000);
     return () => clearInterval(id);
   }, [upi]);
 
@@ -196,7 +196,7 @@ export default function Payment() {
           {qrList.length > 1 && (
             <View style={styles.autoQrHint} testID="auto-qr-hint">
               <Ionicons name="sync-circle" size={14} color={colors.brand} />
-              <Text style={styles.autoQrText}>QR auto-refreshes every few minutes</Text>
+              <Text style={styles.autoQrText}>QR auto-refreshes every 2 minutes</Text>
             </View>
           )}
           <View style={styles.trustBadge}>
@@ -279,7 +279,7 @@ export default function Payment() {
         </View>
       </KeyboardStickyView>
 
-      {submitted && <SuccessOverlay orderId={orderId} onDone={() => router.replace("/(tabs)")} />}
+      {submitted && <SuccessOverlay orderId={orderId} onDone={() => router.replace("/orders")} />}
     </View>
   );
 }

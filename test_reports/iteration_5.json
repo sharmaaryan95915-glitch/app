@@ -1,0 +1,34 @@
+{
+  "summary": "Victory Pay auto-approve + My Orders + QR-2min iteration tested end-to-end. Backend: 39/39 pytest tests PASSED (35 prior regression + 4 NEW targeted tests for this iteration). NEW coverage: (t71) GET /api/tasks/my-payments returns orders with order_id/status/credit/reward/amount/utr/currency/created_at and NO screenshot leak. (t72) Fresh (<15 min) payment stays 'pending' — /auth/me does NOT auto-credit. (t73) AUTO-APPROVE-AFTER-15-MIN verified deterministically by ageing a pending payment created_at to 16 minutes ago directly in Mongo (db=victory_pay, collection task_payments), then calling GET /api/auth/me: payment flips to status='approved' with note='Auto-approved after 15 minutes', processed_at set, balance += credit, total_earned += reward, plan_activation row created; SECOND /auth/me call proves NO double-credit (balance/total_earned unchanged). (t74) Global auto_approve_due() also fires from GET /api/admin/summary: another user's aged pending payment auto-approves + credits when admin hits /admin/summary. Prior regression: admin approve still credits via shared _approve_payment helper (balance += credit, total_earned += reward, plan_activation created); reject leaves balance untouched. Frontend (mobile 390x844): after login as test1@example.com, dismissed onboarding modal, navigated to /profile — 'mine-menu-My Orders' testID present, tap navigates to /orders. Orders screen renders 3 orders (all Approved from prior tests) with correct testIDs (order-VP3269949011, order-VP8478660361, order-VP0292039818) showing Task Name, date (26 Jul, 11:15 am), status badge 'Approved', Order ID, Paid Amount (₹4,000), Profit/Reward (+₹112), Wallet Credit (₹4,122), UTR/Txn ID (123456789012). orders-back-button works and returns to /profile. Since all listed orders were already Approved, order-auto-hint not visible (correct — it only shows on pending). Payment screen (/payment/task_...): payment-qr renders, 'QR auto-refreshes every 2 minutes' hint text present, QR interval confirmed 120000ms in code. Post-payment success overlay routes to /orders (router.replace('/orders')) — confirmed via code inspection. Deprecated packages detected: none. RN-Web deprecation warnings persist (shadow* -> boxShadow, props.pointerEvents -> style.pointerEvents) — cosmetic only.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home/Profile (onboarding modal)", "issues": ["Onboarding welcome modal auto-shows on Home/Profile and can block interaction until user taps Skip/Next. Verified it does NOT persist after dismissal, but E2E automation must Skip first. Not a blocker."]}
+    ],
+    "react_native_issues": [
+      {"component": "Global styles (multiple screens)", "issue": "RN-Web console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"'. Reference: /app/frontend/src/theme.ts (shadow.soft/shadow.card) consumed by orders.tsx:122, profile.tsx:140/145/151, and other cards."},
+      {"component": "AnimatedIntro / Toast / payment pulseRing", "issue": "RN-Web console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: /app/frontend/src/components/AnimatedIntro.tsx, /app/frontend/src/components/Toast.tsx, /app/frontend/app/payment/[taskId].tsx."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_victory_pay.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Cosmetic, non-blocking) Replace shadow* StyleSheet props with `boxShadow` in /app/frontend/src/theme.ts to silence RN-Web deprecation warnings across all cards (orders/profile/home/etc).",
+    "(Cosmetic, non-blocking) Move `pointerEvents` JSX prop into `style={{ pointerEvents: 'none' }}` in AnimatedIntro/Toast/payment pulseRing."
+  ],
+  "critical_code_review_comments": [
+    "server.py now 758 lines — over the 700 LOC guideline. Recommend splitting into modules (routers/auth, routers/tasks, routers/admin, routers/wallet, routers/support, services/payments).",
+    "_approve_payment() correctly re-reads {status:'pending'} before crediting — double-credit safe. The 60-second background loop + lazy triggers on /auth/me, /tasks/my-payments, /admin/summary provide multiple safety nets.",
+    "auto_approve_due() iterates in Python and calls _approve_payment sequentially. Under a burst of hundreds of aged pending payments this could be slow; consider using an update_many with $currentDate + atomic ledger append, or a job queue. Not urgent given current scale.",
+    "task_payments still store base64 screenshot inline in Mongo docs — noted in prior iteration; document size can grow. Consider GridFS/S3 later.",
+    "/orders screen keyExtractor uses payment_id (good). FlatList is fine for typical volumes; consider pagination if a user accumulates hundreds of orders."
+  ],
+  "updated_files": ["/app/backend/tests/test_victory_pay.py"],
+  "success_rate": {"backend": "100% (39/39)", "frontend": "100% (all critical testIDs render: mine-menu-My Orders, order-<VP...>, orders-back-button, payment-qr, and 'QR auto-refreshes every 2 minutes' hint; navigation + integration verified)"},
+  "seed_data_creation": "No persistent seed data required. test_73/74 create ephemeral users and directly age their payment in Mongo (db from backend/.env DB_NAME, collection task_payments) via pymongo — cleaned implicitly by uniqueness of test_* emails. test1@example.com/pass123 idempotently ensured.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite: /app/backend/tests/test_victory_pay.py (39 tests, ~8s). BASE_URL from EXPO_PUBLIC_BACKEND_URL. Admin creds admin@victorypay.com/Admin@123. AUTO-APPROVE tests (t72-t74) require MONGO_URL/DB_NAME env access from backend/.env; they use pymongo (already installed 4.6.3) to age created_at to >15 min. Frontend: an onboarding welcome modal auto-shows for logged-in users on Home/Profile — automation must click 'Skip' before interacting with menu rows. Payment screen no longer has a manual change-qr-button (removed intentionally with 2-min auto-rotation); use payment-qr + 'QR auto-refreshes every 2 minutes' text as verification. Post-payment success overlay uses router.replace('/orders').",
+  "rca_of_issue": "N/A — all requested features (My Orders screen, auto-approve after 15 min with no double-credit, admin approve still credits via shared helper, fresh payment stays pending, 2-min QR hint on payment screen, Profile 'My Orders' entry navigating to /orders) verified working correctly on both backend and frontend."
+}

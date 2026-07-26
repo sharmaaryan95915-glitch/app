@@ -66,6 +66,7 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="payment/[taskId]" options={{ presentation: "card" }} />
+        <Stack.Screen name="orders" options={{ presentation: "card" }} />
         <Stack.Screen name="accounts" options={{ presentation: "card" }} />
         <Stack.Screen name="help" options={{ presentation: "card" }} />
         <Stack.Screen name="wallet/withdraw" options={{ presentation: "card" }} />

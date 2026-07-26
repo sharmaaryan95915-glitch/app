@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import base64
 import logging
 import random
@@ -33,6 +34,7 @@ SIGNUP_BONUS = 70
 REFERRAL_REWARD = 300
 DAILY_RATE = 0.04
 SESSION_DAYS = 30
+AUTO_APPROVE_MINUTES = 15
 TELEGRAM_LINK = "https://t.me/+Kwsy2cWqzQRmYmY9"
 SUPPORT_TELEGRAM = "https://t.me/+fPoKJBDQY-9lMTZl"
 BIG_PAYMENT_UPI = "9905066606@ptyes"
@@ -149,6 +151,45 @@ async def add_transaction(user_id: str, tx_type: str, amount: float, title: str)
     })
 
 
+async def _approve_payment(req: dict, note: Optional[str] = None) -> bool:
+    """Credit a pending payment to the user's wallet. Safe against double-crediting."""
+    fresh = await db.task_payments.find_one(
+        {"payment_id": req["payment_id"], "status": "pending"}, {"_id": 0})
+    if not fresh:
+        return False
+    await db.users.update_one({"user_id": req["user_id"]},
+                              {"$inc": {"balance": req["credit"], "total_earned": req["reward"]}})
+    await add_transaction(req["user_id"], "task", req["credit"], f"{req['task_name']} completed")
+    await db.plan_activations.insert_one({
+        "activation_id": new_id("act"), "user_id": req["user_id"], "task_id": req["task_id"],
+        "plan_name": req["task_name"], "amount": req["amount"], "reward": req["reward"],
+        "status": "active", "created_at": iso(now_utc()),
+    })
+    await db.task_payments.update_one(
+        {"payment_id": req["payment_id"]},
+        {"$set": {"status": "approved", "note": note, "processed_at": iso(now_utc())}})
+    return True
+
+
+async def auto_approve_due(user_id: Optional[str] = None):
+    """Auto-approve pending payments older than AUTO_APPROVE_MINUTES."""
+    q: dict = {"status": "pending"}
+    if user_id:
+        q["user_id"] = user_id
+    cutoff = now_utc() - timedelta(minutes=AUTO_APPROVE_MINUTES)
+    pending = await db.task_payments.find(q, {"_id": 0}).to_list(1000)
+    for req in pending:
+        created = req.get("created_at")
+        try:
+            cdt = datetime.fromisoformat(created) if isinstance(created, str) else created
+            if cdt.tzinfo is None:
+                cdt = cdt.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if cdt <= cutoff:
+            await _approve_payment(req, note="Auto-approved after 15 minutes")
+
+
 # ---------------- Models ----------------
 class RegisterInput(BaseModel):
     name: str
@@ -263,7 +304,9 @@ async def google_session(data: GoogleSessionInput):
 
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    return {"user": public_user(user)}
+    await auto_approve_due(user["user_id"])
+    fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(fresh or user)}
 
 
 @api_router.post("/auth/logout")
@@ -310,6 +353,7 @@ async def list_tasks():
 
 @api_router.get("/tasks/my-payments")
 async def my_payments(user: dict = Depends(get_current_user)):
+    await auto_approve_due(user["user_id"])
     pays = await db.task_payments.find({"user_id": user["user_id"]}, {"_id": 0, "screenshot": 0}) \
         .sort("created_at", -1).to_list(300)
     return {"payments": pays}
@@ -482,6 +526,7 @@ async def support_send(data: SupportSendInput, user: dict = Depends(get_current_
 # ---------------- Admin ----------------
 @api_router.get("/admin/summary")
 async def admin_summary(admin: dict = Depends(require_admin)):
+    await auto_approve_due()
     return {
         "total_users": await db.users.count_documents({}),
         "pending_payments": await db.task_payments.count_documents({"status": "pending"}),
@@ -522,19 +567,12 @@ async def admin_payment_action(payment_id: str, action: str, data: RequestAction
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action")
     if action == "approve":
-        await db.users.update_one({"user_id": req["user_id"]},
-                                  {"$inc": {"balance": req["credit"], "total_earned": req["reward"]}})
-        await add_transaction(req["user_id"], "task", req["credit"], f"{req['task_name']} completed")
-        await db.plan_activations.insert_one({
-            "activation_id": new_id("act"), "user_id": req["user_id"], "task_id": req["task_id"],
-            "plan_name": req["task_name"], "amount": req["amount"], "reward": req["reward"],
-            "status": "active", "created_at": iso(now_utc()),
-        })
+        await _approve_payment(req, data.note)
         new_status = "approved"
     else:
         new_status = "rejected"
-    await db.task_payments.update_one({"payment_id": payment_id},
-                                      {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}})
+        await db.task_payments.update_one({"payment_id": payment_id},
+                                          {"$set": {"status": new_status, "note": data.note, "processed_at": iso(now_utc())}})
     return {"success": True, "status": new_status}
 
 
@@ -702,6 +740,17 @@ async def startup():
         upsert=True,
     )
     logger.info("UPI config set with %d QR images", len(qr_images))
+
+    # Background loop: auto-approve pending payments older than 15 minutes
+    async def _auto_approve_loop():
+        while True:
+            try:
+                await auto_approve_due()
+            except Exception as e:
+                logger.error("auto-approve loop error: %s", e)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_auto_approve_loop())
 
 
 @app.on_event("shutdown")

@@ -424,6 +424,162 @@ class TestVictoryPay:
         assert abs(r.json()["user"]["balance"] - (bal_before + task["final"])) < 0.01, \
             f"Expected balance +{task['final']}, before={bal_before}, after={r.json()['user']['balance']}"
 
+    # ---------- AUTO-APPROVE (15 min) & My Orders (this iteration) ----------
+    def test_71_my_payments_lists_recent_orders(self, api, base_url):
+        """GET /api/tasks/my-payments -> lists user's orders with order_id/utr/status/credit/reward/amount/currency."""
+        r = api.get(f"{base_url}/tasks/my-payments",
+                    headers={"Authorization": f"Bearer {self.state['reg_token']}"})
+        assert r.status_code == 200, r.text
+        payments = r.json()["payments"]
+        assert isinstance(payments, list)
+        assert len(payments) >= 2, f"Expected >=2 orders for reg_user (from t32/t33), got {len(payments)}"
+        p = payments[0]
+        for k in ("payment_id", "order_id", "status", "credit", "reward", "amount", "utr", "currency", "created_at"):
+            assert k in p, f"my-payments item missing field {k}: {p}"
+        # screenshot must be scrubbed
+        assert "screenshot" not in p, "screenshot must NOT leak in /tasks/my-payments"
+        assert p["order_id"].startswith("VP"), f"order_id should start with VP, got {p['order_id']}"
+
+    def test_72_fresh_payment_stays_pending(self, api, base_url):
+        """Recently-submitted payment (<15 min old) must remain pending — NOT auto-credited."""
+        email = rand_email("fresh")
+        r = api.post(f"{base_url}/auth/register",
+                     json={"name": "Fresh", "email": email, "password": "pass1234"})
+        tok = r.json()["token"]
+        bal0 = r.json()["user"]["balance"]  # 70
+
+        big_ss = "data:image/jpeg;base64," + ("F" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_l5"]["task_id"],
+                           "screenshot": big_ss, "utr": "FRESH1234567", "currency": "INR"},
+                     headers={"Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200
+        pid = r.json()["payment"]["payment_id"]
+
+        # Poll /auth/me — balance must NOT change; payment must remain pending
+        r = api.get(f"{base_url}/auth/me", headers={"Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200
+        assert r.json()["user"]["balance"] == bal0, "Fresh payment should NOT auto-credit"
+
+        r = api.get(f"{base_url}/tasks/my-payments", headers={"Authorization": f"Bearer {tok}"})
+        found = next(p for p in r.json()["payments"] if p["payment_id"] == pid)
+        assert found["status"] == "pending", f"fresh payment should stay pending, got {found['status']}"
+
+    def test_73_auto_approve_after_15_min_via_auth_me(self, api, base_url):
+        """Directly age a pending payment >15 min in MongoDB, then hitting /auth/me must:
+        - flip payment status -> approved with note 'Auto-approved after 15 minutes'
+        - credit balance by payment.credit and total_earned by payment.reward
+        - be idempotent (second /auth/me MUST NOT double-credit).
+        """
+        import os
+        from datetime import datetime, timedelta, timezone
+        from pymongo import MongoClient
+
+        # 1) Create user + submit payment
+        email = rand_email("auto")
+        r = api.post(f"{base_url}/auth/register",
+                     json={"name": "Auto", "email": email, "password": "pass1234"})
+        tok = r.json()["token"]
+        user_id = r.json()["user"]["user_id"]
+        bal_before = r.json()["user"]["balance"]  # 70
+        te_before = r.json()["user"].get("total_earned", 0)
+
+        task = self.state["task_l5"]
+        big_ss = "data:image/jpeg;base64," + ("A" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": task["task_id"],
+                           "screenshot": big_ss, "utr": "AUTO12345678", "currency": "INR"},
+                     headers={"Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200, r.text
+        pay = r.json()["payment"]
+        pid = pay["payment_id"]
+        credit = pay["credit"]
+        reward = pay["reward"]
+
+        # 2) Age it >15 minutes in Mongo (as backend stores iso strings)
+        mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+        db_name = os.environ.get("DB_NAME", "victory_pay")
+        client = MongoClient(mongo_url)
+        aged = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat()
+        upd = client[db_name].task_payments.update_one(
+            {"payment_id": pid}, {"$set": {"created_at": aged}})
+        assert upd.modified_count == 1, "failed to age payment in Mongo"
+
+        # 3) Hit /auth/me — must trigger lazy auto_approve_due(user_id)
+        r = api.get(f"{base_url}/auth/me", headers={"Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200
+        u = r.json()["user"]
+        assert abs(u["balance"] - (bal_before + credit)) < 0.01, \
+            f"auto-approve did not credit balance: before={bal_before}, after={u['balance']}, expected +{credit}"
+        assert abs(u["total_earned"] - (te_before + reward)) < 0.01, \
+            f"total_earned mismatch: before={te_before}, after={u['total_earned']}, expected +{reward}"
+
+        # 4) Verify payment doc reflects approval with the auto-note
+        doc = client[db_name].task_payments.find_one({"payment_id": pid}, {"_id": 0})
+        assert doc["status"] == "approved", f"payment status should be approved, got {doc['status']}"
+        assert doc.get("note") == "Auto-approved after 15 minutes", \
+            f"expected auto-approve note, got {doc.get('note')!r}"
+        assert doc.get("processed_at"), "processed_at should be set after auto-approve"
+
+        # 5) NO double-credit on second /auth/me
+        r2 = api.get(f"{base_url}/auth/me", headers={"Authorization": f"Bearer {tok}"})
+        u2 = r2.json()["user"]
+        assert abs(u2["balance"] - u["balance"]) < 0.01, \
+            f"double-credit detected on 2nd /auth/me: {u['balance']} -> {u2['balance']}"
+        assert abs(u2["total_earned"] - u["total_earned"]) < 0.01, "double total_earned"
+
+        # 6) plan_activation created for this auto-approved payment
+        act = client[db_name].plan_activations.find_one({"user_id": user_id, "task_id": task["task_id"]})
+        assert act is not None, "plan_activation should be created on auto-approve"
+        client.close()
+
+        # 7) /tasks/my-payments should reflect approved status
+        r = api.get(f"{base_url}/tasks/my-payments", headers={"Authorization": f"Bearer {tok}"})
+        found = next(p for p in r.json()["payments"] if p["payment_id"] == pid)
+        assert found["status"] == "approved"
+
+    def test_74_auto_approve_via_admin_summary_all_users(self, api, base_url):
+        """auto_approve_due() (no user filter) runs inside /admin/summary — aged pending payments
+        from OTHER users should also auto-approve when admin hits /admin/summary."""
+        import os
+        from datetime import datetime, timedelta, timezone
+        from pymongo import MongoClient
+
+        email = rand_email("adminsum")
+        r = api.post(f"{base_url}/auth/register",
+                     json={"name": "S", "email": email, "password": "pass1234"})
+        tok = r.json()["token"]
+        bal_before = r.json()["user"]["balance"]
+
+        big_ss = "data:image/jpeg;base64," + ("S" * 200)
+        r = api.post(f"{base_url}/tasks/pay",
+                     json={"task_id": self.state["task_l5"]["task_id"],
+                           "screenshot": big_ss, "utr": "SUMM12345678", "currency": "INR"},
+                     headers={"Authorization": f"Bearer {tok}"})
+        assert r.status_code == 200
+        pid = r.json()["payment"]["payment_id"]
+        credit = r.json()["payment"]["credit"]
+
+        mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+        db_name = os.environ.get("DB_NAME", "victory_pay")
+        client = MongoClient(mongo_url)
+        aged = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        client[db_name].task_payments.update_one({"payment_id": pid}, {"$set": {"created_at": aged}})
+
+        # Admin summary as admin -> should trigger global auto-approve
+        r = api.get(f"{base_url}/admin/summary",
+                    headers={"Authorization": f"Bearer {self.state['admin_token']}"})
+        assert r.status_code == 200
+
+        # Verify Mongo state
+        doc = client[db_name].task_payments.find_one({"payment_id": pid}, {"_id": 0})
+        client.close()
+        assert doc["status"] == "approved", "aged payment should be auto-approved by /admin/summary path"
+
+        # Verify credit reached the user
+        r = api.get(f"{base_url}/auth/me", headers={"Authorization": f"Bearer {tok}"})
+        assert abs(r.json()["user"]["balance"] - (bal_before + credit)) < 0.01
+
     def test_80_logout_invalidates(self, api, base_url):
         email = rand_email("lo")
         r = api.post(f"{base_url}/auth/register",
