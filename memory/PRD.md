@@ -31,6 +31,14 @@ Convert the Victory Pay website into an Expo mobile app — a premium fintech re
 
 ## Backlog / Next
 - P1: Admin edit QR/UPI/USDT-address & beneficiary from app.
-- P1: User order-status tracker (pending/approved/rejected + reason).
-- P2: Replace RN-web shadow*/pointerEvents deprecations with boxShadow (web-only cosmetic).
 - P2: Level unlock progression, withdrawal limits/KYC.
+
+## Update 2026-07-26 (iter 5 — onboarding, auto-approve, orders)
+- First-time Onboarding overlay (4 steps) for new regular users, wired in _layout.tsx; persisted via storage key `onboarding_seen_<user_id>`.
+- Hourly local invest-reminder notifications (expo-notifications) scheduled on startup — only testable on native APK/iOS build, no-op on web/Expo Go.
+- Admin panel: new-order alert — bell badge + `new-orders-alert` banner driven by backend `seen_by_admin` flag (summary.new_orders; marked seen on load).
+- Task tiers ₹500–₹20000 (L1–L7) + New User Special plans (level 0). Navi UPI payout added.
+- QR auto-rotates every 2 min (no manual change button).
+- Payments AUTO-APPROVE after 15 min: shared `_approve_payment()` + `auto_approve_due()`; background loop every 60s + lazy triggers on /auth/me, /tasks/my-payments, /admin/summary. No double-credit.
+- New `/orders` (My Orders) screen: shows Order ID, amount, profit, wallet credit, UTR, date, status (Pending/Approved/Rejected). Success overlay routes here after payment.
+- Verified: 39/39 backend pytest + frontend flows.
