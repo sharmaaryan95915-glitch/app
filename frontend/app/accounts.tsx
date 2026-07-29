@@ -12,12 +12,13 @@ import { Field, GoldButton } from "@/src/components/ui";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 
 const METHODS = [
-  { key: "PhonePe", color: "#5f259f" },
-  { key: "Google Pay", color: "#1a73e8" },
-  { key: "Paytm", color: "#00baf2" },
-  { key: "FamPay", color: "#f9c74f" },
-  { key: "Navi UPI", color: "#2a5cff" },
-  { key: "Bank Account", color: "#2a9d8f" },
+  { key: "PhonePe", color: "#5F259F", short: "Pe", icon: null },
+  { key: "Google Pay", color: "#1A73E8", short: "G", icon: null },
+  { key: "Paytm", color: "#012E58", short: "pay", icon: null },
+  { key: "BharatPe", color: "#1A1F71", short: "B", icon: null },
+  { key: "FamPay", color: "#FFB800", short: "F", icon: null },
+  { key: "Navi UPI", color: "#2A5CFF", short: "N", icon: null },
+  { key: "Bank Account", color: "#2A9D8F", short: "", icon: "business" },
 ];
 
 export default function Accounts() {
@@ -90,7 +91,9 @@ export default function Accounts() {
               onPress={() => setMethod(m.key)}
               testID={`method-${m.key}`}
             >
-              <View style={[styles.methodDot, { backgroundColor: m.color }]} />
+              <View style={[styles.methodBadge, { backgroundColor: m.color }]}>
+                {m.icon ? <Ionicons name={m.icon as any} size={13} color="#fff" /> : <Text style={styles.methodBadgeText}>{m.short}</Text>}
+              </View>
               <Text style={[styles.methodText, method === m.key && { color: colors.onSurface }]}>{m.key}</Text>
             </Pressable>
           ))}
@@ -111,7 +114,7 @@ export default function Accounts() {
             return (
               <View key={a.account_id} style={styles.acctRow} testID={`account-${a.account_id}`}>
                 <View style={[styles.acctIcon, { backgroundColor: m.color }]}>
-                  <Text style={styles.acctIconText}>{a.method[0]}</Text>
+                  {m.icon ? <Ionicons name={m.icon as any} size={20} color="#fff" /> : <Text style={styles.acctIconText}>{m.short}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.acctMethod}>{a.method}</Text>

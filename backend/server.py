@@ -37,7 +37,7 @@ SESSION_DAYS = 30
 AUTO_APPROVE_MINUTES = 15
 TELEGRAM_LINK = "https://t.me/+Kwsy2cWqzQRmYmY9"
 SUPPORT_TELEGRAM = "https://t.me/+fPoKJBDQY-9lMTZl"
-BIG_PAYMENT_UPI = "9905066606@ptyes"
+BIG_PAYMENT_UPI = "8809429216@nyes"
 BENEFICIARY_NAME = "Victory Pay"
 USDT_ADDRESS = "TXk8rQSAztBGkFqmT8 dummy".replace(" ", "")
 USDT_FALLBACK_RATE = 91.5
@@ -677,10 +677,13 @@ LEVEL_AMOUNTS = {
     6: [7000, 8000, 9000, 10000, 12000],
     7: [14000, 16000, 18000, 19000, 20000],
 }
-# Special New-User plans: (pay_amount, profit_reward)
+# Special New-User plans (from Reward Investment Plans chart): (pay_amount, profit_reward) up to ₹3,00,000
 NEW_USER_PLANS = [
-    (1250, 300), (2250, 400), (3350, 500), (5550, 650),
-    (6700, 700), (8700, 950), (10000, 1050),
+    (1250, 300), (2450, 450), (3450, 550), (4500, 650), (5500, 750),
+    (6500, 850), (7500, 950), (8500, 1050), (9500, 1150), (10050, 1500),
+    (11500, 1730), (12500, 1900), (15000, 2350), (20000, 3200), (25000, 4100),
+    (30000, 5200), (50000, 9000), (75000, 14250), (100000, 20000), (150000, 32000),
+    (200000, 44000), (250000, 57500), (300000, 72000),
 ]
 
 
@@ -727,9 +730,9 @@ async def startup():
     else:
         await db.users.update_one({"email": ADMIN_EMAIL.lower()}, {"$set": {"role": "admin"}})
 
-    # UPI config with QR images (base64)
+    # UPI config with QR image(s) (base64) — updated to the latest provided QR
     qr_images = []
-    for fname in ("qr1.jpg", "qr2.jpg", "qr3.jpg", "qr4.jpg"):
+    for fname in ("qr_new.jpg",):
         fp = ROOT_DIR / "assets" / fname
         if fp.exists():
             b = base64.b64encode(fp.read_bytes()).decode()
