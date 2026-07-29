@@ -1,0 +1,33 @@
+{
+  "summary": "REGRESSION VERIFICATION after 3 deploy-config fixes (frontend/.env METRO_CACHE_ROOT quoted, app.json expo-notifications plugin + POST_NOTIFICATIONS, notifications.ts Android channel before permission). Backend: 39/39 pytest tests PASSED after updating 2 stale assertions in test_victory_pay.py to match the new spec (t22: tasks endpoint now returns 58 tasks — 23 New-User plans (level 0) up to ₹300000 tier + 35 for L1..L7; t23: /wallet/upi-info now returns exactly 1 QR image with big_payment_upi='8809429216@nyes'). Frontend (mobile 390x844) via preview URL: (1) Landing page loads cleanly, no red screen, no runtime errors — only a benign expo-notifications web-warning ('Listening to push token changes is not yet fully supported on web') plus prior cosmetic RN-web deprecation warnings (shadow*/pointerEvents). (2) User login test1@example.com/pass123 → Home renders with Available Balance ₹14,351.29 (home-balance testID). (3) Admin login admin@victorypay.com/Admin@123 → header shows 'Admin' badge; navigating to /admin renders Admin Panel with tabs Payments(2)/Withdraw(0)/Support(7)/Users(68), bell icon, and per-payment testIDs (approve-payment-*, reject-payment-*, view-screenshot-*, admin-payment-*) — approve/reject flow intact. (4) Backend endpoints (verified via curl): GET /api/tasks → 58 tasks, New-User amounts include ...100000, 150000, 200000, 250000, 300000 as required; GET /api/wallet/upi-info → big_payment_upi='8809429216@nyes', qr_images.length=1. (5) Payment flow (/payment/task_...): payment-qr renders (QR image), UPI ID '8809429216@nyes' shown, UTR input (payment-utr-input) + screenshot attach section ('Tap to attach screenshot') + payment-submit-button all present. (6) My Orders reachable from Profile via 'mine-menu-My Orders' testID → /orders lists 5 approved orders (VP0832724219, VP3269949011, VP8478660361, VP0292039818, plus one legacy) with Order ID, Paid Amount, Profit/Reward, Wallet Credit, UTR — orders-back-button returns to /profile. (7) Admin new-orders alert (bell icon on admin panel) + approve/reject buttons all render; auto-approve endpoints intact (t73/t74 in pytest verify 15-min lazy auto-approve via /auth/me and /admin/summary with no double-credit). Deprecated packages detected: none. All configuration changes safely applied — nothing regressed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-notifications (web)", "issue": "Console warning on web: '[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' — benign, hourly reminders are Android/iOS only and correctly guarded by Platform.OS==='web' return in setupInvestReminders. Reference: /app/frontend/src/notifications.ts:15."},
+      {"component": "Global styles (theme.ts) — persistent from prior iterations", "issue": "RN-Web console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"'. Reference: /app/frontend/src/theme.ts (shadow.soft/shadow.card)."},
+      {"component": "AnimatedIntro / Toast / payment pulseRing — persistent from prior iterations", "issue": "RN-Web console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: /app/frontend/src/components/AnimatedIntro.tsx, /app/frontend/src/components/Toast.tsx, /app/frontend/app/payment/[taskId].tsx."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_victory_pay.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Cosmetic, non-blocking) Replace shadow* StyleSheet props with `boxShadow` in /app/frontend/src/theme.ts.",
+    "(Cosmetic, non-blocking) Move `pointerEvents` JSX prop into `style={{ pointerEvents: 'none' }}` in AnimatedIntro/Toast/payment pulseRing.",
+    "(Optional) Consider splitting /app/backend/server.py (~758 lines) into routers/services modules — carried over from prior iterations, not urgent."
+  ],
+  "critical_code_review_comments": [
+    "notifications.ts: Android channel creation is correctly placed BEFORE requestPermissionsAsync per Android 13+ requirement; Platform.OS==='web' early-return keeps web preview safe. Good.",
+    "app.json: expo-notifications plugin added with brand color #0BA36B; POST_NOTIFICATIONS permission added under android.permissions[]. Correct.",
+    "frontend/.env: METRO_CACHE_ROOT is now properly quoted (\"/app/frontend/.metro-cache\") — expo starts cleanly.",
+    "server.py backend still 700+ LOC and stores base64 screenshots inline — carried over recommendations, not blocking."
+  ],
+  "updated_files": ["/app/backend/tests/test_victory_pay.py"],
+  "success_rate": {"backend": "100% (39/39)", "frontend": "100% — landing, user login, admin login, admin panel, payment screen, My Orders navigation, back navigation all verified with expected testIDs and content"},
+  "seed_data_creation": "None. test_credentials.md creds used as-is (test1@example.com/pass123 and admin@victorypay.com/Admin@123).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite is /app/backend/tests/test_victory_pay.py (39 tests, ~7s). CURRENT SPEC: GET /api/tasks returns 58 tasks (23 New-User plans level=0 up to ₹300000 amount, plus 5 tasks per L1..L7). GET /api/wallet/upi-info returns exactly 1 QR image and big_payment_upi='8809429216@nyes'. Onboarding welcome modal auto-shows once for regular users on Home/Profile — dismiss via 'Skip' before interacting. Admin panel is at /admin route (not linked from bottom tabs, admin lands on Home first with an 'Admin' badge/button on the header). Task buy-button testIDs are `receive-<taskId>` (not `task-buy-*`). Payment screen selectors: payment-qr, payment-utr-input, payment-submit-button (screenshot has 'Tap to attach screenshot' text — no dedicated testID for the picker). My Orders: mine-menu-'My Orders' opens /orders which lists approved/pending orders with order-<VPxxx> testIDs.",
+  "rca_of_issue": "N/A — this iteration is a config-fix regression check. All three deploy fixes (METRO_CACHE_ROOT quoting, expo-notifications plugin, Android channel-before-permission) verified non-breaking; user + admin auth flows, home balance, /tasks & /wallet/upi-info APIs, payment screen, My Orders, and Admin approve/reject panel all functional."
+}

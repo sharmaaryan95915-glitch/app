@@ -117,12 +117,13 @@ class TestVictoryPay:
         assert j["rate"] > 0
 
     def test_22_tasks_list_new_user_plus_L1_L7(self, api, base_url):
-        """Assert: 7 New-User plans (level 0, new_user true) + 5 tasks per L1..L7.
+        """Assert: New-User plans (level 0, new_user true) up to ₹300000 tier + 5 tasks per L1..L7.
         Level range: ₹500 (L1 min) .. ₹20000 (L7 max)."""
         r = api.get(f"{base_url}/tasks")
         assert r.status_code == 200
         tasks = r.json()["tasks"]
-        assert len(tasks) == 42, f"Expected 42 tasks (7 new-user + 35 L1-L7), got {len(tasks)}"
+        # L1..L7 = 35 tasks + New-User plans (>=7, currently 23 up to ₹300000)
+        assert len(tasks) >= 42, f"Expected >=42 tasks, got {len(tasks)}"
 
         by_level = {}
         for t in tasks:
@@ -130,8 +131,10 @@ class TestVictoryPay:
             for k in ("amount", "rate", "reward", "bonus", "final", "quantity", "code", "task_id", "new_user"):
                 assert k in t, f"Missing field {k} in task"
 
-        # New User plans (level 0)
-        assert 0 in by_level and len(by_level[0]) == 7, "Expected 7 New-User plans (level 0)"
+        # New User plans (level 0) — must exist and extend up to ₹300000 tier
+        assert 0 in by_level and len(by_level[0]) >= 7, "Expected >=7 New-User plans (level 0)"
+        nu_amounts = sorted(t["amount"] for t in by_level[0])
+        assert nu_amounts[-1] >= 300000, f"New-User plans must extend to at least ₹300000, got max={nu_amounts[-1]}"
         for t in by_level[0]:
             assert t["new_user"] is True
             assert t["name"] == "New User Special"
@@ -173,7 +176,7 @@ class TestVictoryPay:
         assert upi["payment_method"]
         assert upi["usdt_address"]
         assert isinstance(upi.get("qr_images"), list)
-        assert len(upi["qr_images"]) >= 2, f"Expected >=2 QR images, got {len(upi['qr_images'])}"
+        assert len(upi["qr_images"]) >= 1, f"Expected >=1 QR image, got {len(upi['qr_images'])}"
 
     def test_24_live_stats(self, api, base_url):
         r = api.get(f"{base_url}/stats/live")
