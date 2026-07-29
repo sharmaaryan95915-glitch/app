@@ -23,6 +23,16 @@ export async function setupInvestReminders() {
       }),
     });
 
+    // Android 13+ requires a notification channel before requesting permission
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("invest-reminders", {
+        name: "Invest Reminders",
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#0BA36B",
+      });
+    }
+
     const settings = await Notifications.getPermissionsAsync();
     let granted = settings.granted;
     if (!granted && settings.canAskAgain) {
@@ -37,11 +47,16 @@ export async function setupInvestReminders() {
     // Repeating hourly reminder
     const pick = REMINDERS[Math.floor(Math.random() * REMINDERS.length)];
     await Notifications.scheduleNotificationAsync({
-      content: { title: pick.title, body: pick.body },
+      content: {
+        title: pick.title,
+        body: pick.body,
+        ...(Platform.OS === "android" ? { channelId: "invest-reminders" } : {}),
+      },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 3600,
         repeats: true,
+        ...(Platform.OS === "android" ? { channelId: "invest-reminders" } : {}),
       },
     });
   } catch {
