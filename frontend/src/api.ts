@@ -1,6 +1,6 @@
 import { storage } from "@/src/utils/storage";
 
-const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
+const BASE = "https://victory-pay-tflj.onrender.com/api";
 export const TOKEN_KEY = "vp_session_token";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
