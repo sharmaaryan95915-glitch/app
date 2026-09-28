@@ -80,3 +80,6 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+# Mail bot secrets / logs
+mail_bot/.env
+mail_bot/sent_log.csv
