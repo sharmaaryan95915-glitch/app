@@ -156,10 +156,18 @@
       $$(".nav__links a").forEach((a) => a.addEventListener("click", () => header.classList.remove("menu-open")));
     }
 
-    /* Active nav link */
-    const page = location.pathname.split("/").pop() || "index.html";
-    $$(".nav__links a").forEach((a) => {
-      if (a.getAttribute("href") === page) a.classList.add("is-active");
+    /* Active nav link — highlights the section currently on screen */
+    const navLinks = $$('.nav__links a[href^="#"]');
+    const spy = new IntersectionObserver(
+      (entries) => entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        navLinks.forEach((a) => a.classList.toggle("is-active", a.getAttribute("href") === "#" + en.target.id));
+      }),
+      { rootMargin: "-45% 0px -50% 0px" }
+    );
+    navLinks.forEach((a) => {
+      const target = $(a.getAttribute("href"));
+      if (target) spy.observe(target);
     });
 
     /* Header glass on scroll, hide on scroll down, progress bar, back-to-top */

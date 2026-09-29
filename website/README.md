@@ -4,11 +4,10 @@ This is a static website with no build step. Open `index.html` in a browser, or 
 
 ```
 website/
-├── index.html      Home
-├── about.html      About Us
-├── services.html   Services (with category filters)
-├── partner.html    Retailer / Distributor / Master Distributor
-├── contact.html    Contact form, address, map
+├── index.html      The whole site on one page. Sections, in order:
+│                   HOME, ABOUT, SERVICES, WHY US, PARTNER, FAQ,
+│                   CONTACT, CALL TO ACTION (search for these names
+│                   in the file to jump to a section)
 ├── css/style.css   All styles, including day and night themes
 ├── js/main.js      Theme toggle, sounds, animations
 └── assets/         Logo and favicon
@@ -20,5 +19,5 @@ website/
 - **Animations**: intro logo reveal, scroll reveals, staggered cards, a cursor spotlight on cards, 3D tilt on the hero, ripple buttons, counters, a marquee and a scroll progress bar. All animations turn off for users who choose reduced motion.
 
 ## Before going live
-- In `contact.html`, replace the placeholder phone number and check the email address. Search for `TODO`.
+- In the CONTACT section of `index.html`, replace the placeholder phone number and check the email address. Search for `TODO`.
 - The forms only work in the browser. Connect them to your backend or an email service in `js/main.js` (see `form[data-demo]`).
