@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Portfolio</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .admin-grid { display: grid; grid-template-columns: 400px 1fr; gap: 24px; align-items: start; padding: 32px 0 80px; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .list { display: grid; gap: 12px; }
+    .item { display: grid; grid-template-columns: 160px 1fr auto; gap: 16px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+    .item .thumb { width: 160px; border-radius: 10px; }
+    .item .thumb::after { display: none; }
+    .item h3 { font-size: 15px; }
+    .item small { color: var(--muted); font-size: 12px; display: block; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: end; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
+    .pill.on { color: var(--accent); border-color: var(--accent); }
+    .login { max-width: 380px; margin: 14vh auto; }
+    .linkbox { display: flex; gap: 8px; margin-top: 8px; }
+    .linkbox input { font-size: 13px; }
+    @media (max-width: 960px) {
+      .admin-grid { grid-template-columns: 1fr; }
+      .item { grid-template-columns: 1fr; }
+      .item .thumb { width: 100%; }
+      .item .actions { justify-content: start; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="/" class="logo">Portfolio<span>.</span></a>
+      <div style="display:flex;gap:8px">
+        <a href="/" target="_blank" class="btn btn-sm">View site ↗</a>
+        <button id="logoutBtn" class="btn btn-sm" hidden>Log out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Login -->
+  <div id="loginView" class="wrap" hidden>
+    <form class="panel login" id="loginForm">
+      <h2 style="font-family:var(--serif);font-weight:400;font-size:36px;margin-bottom:6px">Studio login</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px">Manage your portfolio and client links.</p>
+      <div class="field"><label>Password</label><input class="input" type="password" name="password" autofocus required></div>
+      <button class="btn btn-primary" style="width:100%">Log in</button>
+      <p id="loginErr" style="color:var(--danger);font-size:13px;margin-top:10px"></p>
+    </form>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="appView" class="wrap admin-grid" hidden>
+    <aside style="display:grid;gap:24px">
+      <form class="panel" id="uploadForm">
+        <h2>Upload a video</h2>
+        <label class="dropzone" id="drop">
+          <input type="file" name="video" accept="video/*" hidden>
+          <strong id="dropText">Drop video here or click to browse</strong>
+          <small>MP4, MOV, WEBM</small>
+        </label>
+        <div class="field"><label>Title</label><input class="input" name="title" placeholder="e.g. Nike — Summer Campaign"></div>
+        <div class="row">
+          <div class="field"><label>Category</label>
+            <input class="input" name="category" list="cats" placeholder="Commercial">
+            <datalist id="cats"><option>Commercial</option><option>Music Video</option><option>YouTube</option><option>Reels / Shorts</option><option>Wedding</option><option>Documentary</option><option>Color Grading</option></datalist>
+          </div>
+          <div class="field"><label>Client</label><input class="input" name="client" placeholder="Brand / Creator"></div>
+        </div>
+        <div class="field"><label>Description</label><textarea class="input" name="description" placeholder="What you did on this project…"></textarea></div>
+        <div class="field"><label>Tools</label><input class="input" name="tools" placeholder="Premiere Pro, After Effects, DaVinci"></div>
+        <div class="field"><label>Thumbnail (optional)</label><input class="input" type="file" name="thumb" accept="image/*"></div>
+        <label class="check" style="margin-bottom:16px"><input type="checkbox" name="featured" value="true"> Feature on top</label>
+        <div class="progress" id="progress"><div></div></div>
+        <button class="btn btn-primary" style="width:100%" id="uploadBtn">Upload</button>
+      </form>
+
+      <form class="panel" id="profileForm">
+        <h2>Your profile</h2>
+        <div class="field"><label>Name</label><input class="input" name="name"></div>
+        <div class="field"><label>Tagline</label><input class="input" name="tagline"></div>
+        <div class="field"><label>Bio</label><textarea class="input" name="bio"></textarea></div>
+        <div class="field"><label>Email</label><input class="input" name="email" type="email"></div>
+        <div class="field"><label>WhatsApp number</label><input class="input" name="phone" placeholder="+91 98xxxxxxx"></div>
+        <div class="field"><label>Instagram URL</label><input class="input" name="instagram"></div>
+        <div class="field"><label>YouTube URL</label><input class="input" name="youtube"></div>
+        <div class="field"><label>Showreel video</label><select class="input" name="showreelId"></select></div>
+        <button class="btn" style="width:100%">Save profile</button>
+      </form>
+    </aside>
+
+    <main>
+      <div class="tabs">
+        <button class="chip active" data-tab="videos">Videos</button>
+        <button class="chip" data-tab="links">Client links</button>
+      </div>
+
+      <div id="tab-videos">
+        <div class="list" id="videoList"></div>
+      </div>
+
+      <div id="tab-links" hidden>
+        <form class="panel" id="collectionForm" style="margin-bottom:20px">
+          <h2>Create a link for a client</h2>
+          <div class="row">
+            <div class="field"><label>Title</label><input class="input" name="title" placeholder="Edits for Acme Studios"></div>
+            <div class="field"><label>Client name</label><input class="input" name="clientName" placeholder="Rahul / Acme"></div>
+          </div>
+          <div class="field"><label>Personal message</label><textarea class="input" name="message" placeholder="Hi! Here are a few edits similar to what you need…"></textarea></div>
+          <div class="field"><label>Videos to include</label><div id="pickList" style="display:grid;gap:8px;max-height:220px;overflow:auto;padding:4px"></div></div>
+          <label class="check" style="margin-bottom:16px"><input type="checkbox" name="allowDownload"> Allow client to download</label>
+          <button class="btn btn-primary">Create share link</button>
+          <div id="newLink"></div>
+        </form>
+        <div class="list" id="collectionList"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    let state = { videos: [], collections: [], profile: {} };
+    const api = (url, opts = {}) => fetch(url, { headers: opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}, ...opts })
+      .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Request failed'); return d; });
+
+    const fmtSize = (b) => (b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(1) + ' MB');
+    const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+    async function boot() {
+      const { loggedIn } = await api('/api/admin/me');
+      $('#loginView').hidden = loggedIn;
+      $('#appView').hidden = !loggedIn;
+      $('#logoutBtn').hidden = !loggedIn;
+      if (loggedIn) load();
+    }
+
+    async function load() {
+      state = await api('/api/admin/data');
+      setLogo(state.profile.name);
+      renderVideos();
+      renderCollections();
+      renderProfile();
+    }
+
+    function renderVideos() {
+      $('#videoList').innerHTML = state.videos.length ? state.videos.map((v) => `
+        <div class="item" data-id="${v.id}">
+          <div class="thumb">${v.thumbUrl ? `<img src="${esc(v.thumbUrl)}">` : `<video src="${esc(v.url)}#t=1" muted preload="metadata"></video>`}</div>
+          <div>
+            <h3>${esc(v.title)} ${v.featured ? '<span class="pill on">Featured</span>' : ''} ${v.visible === false ? '<span class="pill">Hidden</span>' : ''}</h3>
+            <small>${esc(v.category)}${v.client ? ' · ' + esc(v.client) : ''}</small>
+            <small>${fmtSize(v.size || 0)} · ${v.views || 0} views · ${fmtDate(v.createdAt)}</small>
+          </div>
+          <div class="actions">
+            <button class="btn btn-sm" data-act="copy">Copy link</button>
+            <button class="btn btn-sm" data-act="feature">${v.featured ? 'Unfeature' : 'Feature'}</button>
+            <button class="btn btn-sm" data-act="visible">${v.visible === false ? 'Show' : 'Hide'}</button>
+            <button class="btn btn-sm btn-danger" data-act="delete">Delete</button>
+          </div>
+        </div>`).join('') : `<div class="empty"><h3>No videos yet</h3><p>Upload your first edit using the form on the left.</p></div>`;
+
+      $('#pickList').innerHTML = state.videos.map((v) => `<label class="check"><input type="checkbox" value="${v.id}"> ${esc(v.title)} <small style="color:var(--muted)">· ${esc(v.category)}</small></label>`).join('') || '<small style="color:var(--muted)">Upload videos first.</small>';
+    }
+
+    function renderCollections() {
+      $('#collectionList').innerHTML = state.collections.map((c) => {
+        const link = `${location.origin}/c/${c.id}`;
+        return `
+        <div class="item" style="grid-template-columns:1fr auto" data-cid="${c.id}">
+          <div>
+            <h3>${esc(c.title)} ${c.allowDownload ? '<span class="pill on">Download on</span>' : ''}</h3>
+            <small>${c.clientName ? 'For ' + esc(c.clientName) + ' · ' : ''}${c.videoIds.length} video(s) · created ${fmtDate(c.createdAt)}</small>
+            <small>${c.views ? `Opened ${c.views}× · last ${fmtDate(c.lastViewedAt)}` : 'Not opened yet'}</small>
+            <div class="linkbox"><input class="input" readonly value="${link}"></div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-sm" data-cact="copy">Copy</button>
+            <a class="btn btn-sm" href="https://wa.me/?text=${encodeURIComponent((c.clientName ? 'Hi ' + c.clientName + ', ' : 'Hi, ') + 'here is my portfolio: ' + link)}" target="_blank">WhatsApp</a>
+            <a class="btn btn-sm" href="${link}" target="_blank">Open</a>
+            <button class="btn btn-sm btn-danger" data-cact="delete">Delete</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderProfile() {
+      const f = $('#profileForm');
+      for (const k of ['name', 'tagline', 'bio', 'email', 'phone', 'instagram', 'youtube']) f[k].value = state.profile[k] || '';
+      f.showreelId.innerHTML = `<option value="">— None —</option>` + state.videos.map((v) => `<option value="${v.id}" ${v.id === state.profile.showreelId ? 'selected' : ''}>${esc(v.title)}</option>`).join('');
+    }
+
+    // Login / logout
+    $('#loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ password: e.target.password.value }) });
+        boot();
+      } catch (err) { $('#loginErr').textContent = err.message; }
+    });
+    $('#logoutBtn').addEventListener('click', async () => { await api('/api/admin/logout', { method: 'POST' }); boot(); });
+
+    // Tabs
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('active', x === b));
+      $('#tab-videos').hidden = b.dataset.tab !== 'videos';
+      $('#tab-links').hidden = b.dataset.tab !== 'links';
+    }));
+
+    // Drag & drop
+    const drop = $('#drop');
+    const fileInput = drop.querySelector('input');
+    const showFile = () => ($('#dropText').textContent = fileInput.files[0] ? `${fileInput.files[0].name} (${fmtSize(fileInput.files[0].size)})` : 'Drop video here or click to browse');
+    fileInput.addEventListener('change', showFile);
+    ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('drag')));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); fileInput.files = e.dataTransfer.files; showFile(); });
+
+    // Upload with progress
+    $('#uploadForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!fileInput.files[0]) return toast('Choose a video first');
+      const form = e.target;
+      const xhr = new XMLHttpRequest();
+      const bar = $('#progress');
+      bar.style.display = 'block';
+      $('#uploadBtn').disabled = true;
+      xhr.upload.onprogress = (ev) => {
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        bar.firstElementChild.style.width = pct + '%';
+        $('#uploadBtn').textContent = `Uploading… ${pct}%`;
+      };
+      xhr.onloadend = () => {
+        bar.style.display = 'none';
+        bar.firstElementChild.style.width = 0;
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').textContent = 'Upload';
+        let res = {};
+        try { res = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status === 200) { toast('Video uploaded'); form.reset(); showFile(); load(); }
+        else toast(res.error || 'Upload failed');
+      };
+      xhr.open('POST', '/api/admin/videos');
+      xhr.send(new FormData(form));
+    });
+
+    // Video actions
+    $('#videoList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const id = btn.closest('.item').dataset.id;
+      const v = state.videos.find((x) => x.id === id);
+      try {
+        if (btn.dataset.act === 'copy') return copyText(`${location.origin}/v/${id}`);
+        if (btn.dataset.act === 'feature') await api(`/api/admin/videos/${id}`, { method: 'PATCH', body: JSON.stringify({ featured: !v.featured }) });
+        if (btn.dataset.act === 'visible') await api(`/api/admin/videos/${id}`, { method: 'PATCH', body: JSON.stringify({ visible: v.visible === false }) });
+        if (btn.dataset.act === 'delete') {
+          if (!confirm(`Delete "${v.title}"? This removes the file permanently.`)) return;
+          await api(`/api/admin/videos/${id}`, { method: 'DELETE' });
+          toast('Deleted');
+        }
+        load();
+      } catch (err) { toast(err.message); }
+    });
+
+    // Profile
+    $('#profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = Object.fromEntries(new FormData(e.target));
+      body.showreelId = body.showreelId || null;
+      try { await api('/api/admin/profile', { method: 'PUT', body: JSON.stringify(body) }); toast('Profile saved'); load(); }
+      catch (err) { toast(err.message); }
+    });
+
+    // Collections
+    $('#collectionForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const videoIds = [...$('#pickList').querySelectorAll('input:checked')].map((i) => i.value);
+      try {
+        const c = await api('/api/admin/collections', { method: 'POST', body: JSON.stringify({
+          title: f.title.value, clientName: f.clientName.value, message: f.message.value, allowDownload: f.allowDownload.checked, videoIds,
+        }) });
+        const link = `${location.origin}/c/${c.id}`;
+        copyText(link);
+        $('#newLink').innerHTML = `<div class="linkbox" style="margin-top:14px"><input class="input" readonly value="${link}"><a class="btn btn-sm" href="${link}" target="_blank">Open</a></div>`;
+        f.reset();
+        load();
+      } catch (err) { toast(err.message); }
+    });
+
+    $('#collectionList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-cact]');
+      if (!btn) return;
+      const item = btn.closest('.item');
+      if (btn.dataset.cact === 'copy') return copyText(item.querySelector('input').value);
+      if (btn.dataset.cact === 'delete' && confirm('Delete this client link? It will stop working.')) {
+        await api(`/api/admin/collections/${item.dataset.cid}`, { method: 'DELETE' });
+        load();
+      }
+    });
+
+    boot();
+  </script>
+</body>
+</html>

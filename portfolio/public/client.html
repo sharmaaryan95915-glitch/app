@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Selected work</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="/" class="logo">Portfolio<span>.</span></a>
+      <a id="contactTop" href="/#contact" class="btn btn-sm btn-primary">Contact</a>
+    </div>
+  </nav>
+
+  <header class="hero" style="padding-bottom:24px">
+    <div class="wrap" id="head"></div>
+  </header>
+
+  <section style="padding-top:24px">
+    <div class="wrap"><div class="grid" id="grid"></div></div>
+  </section>
+
+  <footer><div class="wrap"><span id="footerName"></span><a href="/">View full portfolio →</a></div></footer>
+
+  <script src="/common.js"></script>
+  <script>
+    const cid = location.pathname.split('/').pop();
+    fetch('/api/collections/' + encodeURIComponent(cid)).then((r) => r.json()).then(({ profile, collection, videos, error }) => {
+      if (error) {
+        $('#head').innerHTML = `<div class="empty"><h3>Link not found</h3><p>This link may have expired or been removed.</p></div>`;
+        return;
+      }
+      setLogo(profile.name);
+      document.title = `${collection.title} — ${profile.name}`;
+      if (profile.email) $('#contactTop').href = `mailto:${profile.email}?subject=${encodeURIComponent(collection.title)}`;
+      $('#footerName').textContent = `© ${new Date().getFullYear()} ${profile.name}`;
+      $('#head').innerHTML = `
+        <div class="eyebrow">Prepared ${collection.clientName ? 'for ' + esc(collection.clientName) : 'for you'}</div>
+        <h1 style="font-size:clamp(44px,7vw,84px)">${esc(collection.title)}</h1>
+        <p>${esc(collection.message || `A hand-picked selection of my work by ${profile.name}.`)}</p>`;
+      const grid = $('#grid');
+      grid.innerHTML = videos.map((v) => videoCard(v)).join('');
+      grid.querySelectorAll('.card').forEach((c) =>
+        c.addEventListener('click', () => openPlayer(videos.find((v) => v.id === c.dataset.id), { allowDownload: collection.allowDownload })));
+      enableHoverPreview(grid);
+    });
+  </script>
+</body>
+</html>

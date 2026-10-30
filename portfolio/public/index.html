@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Editor Portfolio</title>
+  <meta name="description" content="Video editing portfolio — commercials, music videos, YouTube and reels.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a href="/" class="logo">Portfolio<span>.</span></a>
+      <div class="nav-links">
+        <a href="#work">Work</a>
+        <a href="#services">Services</a>
+        <a href="#about">About</a>
+        <a href="#contact">Contact</a>
+      </div>
+      <a href="#contact" class="btn btn-sm btn-primary">Hire me</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Available for new projects</div>
+      <h1 id="heroTitle">Edits that make people <em>stop scrolling.</em></h1>
+      <p id="heroBio"></p>
+      <div class="hero-actions">
+        <a href="#work" class="btn btn-primary">View my work</a>
+        <a href="#contact" class="btn">Get in touch</a>
+      </div>
+      <div class="showreel" id="showreel" hidden>
+        <span class="showreel-label">Showreel</span>
+        <video id="showreelVideo" muted loop autoplay playsinline controls></video>
+      </div>
+    </div>
+  </header>
+
+  <section id="work">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <h2>Selected work</h2>
+          <p id="workCount"></p>
+        </div>
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+
+  <section id="services">
+    <div class="wrap">
+      <div class="section-head"><h2>What I do</h2></div>
+      <div class="services">
+        <div class="service"><div class="num">01</div><h3>Commercial & Brand</h3><p>Ads and brand films cut for impact, with tight pacing and clean motion graphics.</p></div>
+        <div class="service"><div class="num">02</div><h3>YouTube & Long-form</h3><p>Retention-focused edits, storytelling, B-roll, captions and thumbnails that click.</p></div>
+        <div class="service"><div class="num">03</div><h3>Reels & Shorts</h3><p>Fast, trend-aware vertical edits for Instagram, TikTok and YouTube Shorts.</p></div>
+        <div class="service"><div class="num">04</div><h3>Color & Sound</h3><p>Cinematic color grading, sound design and audio cleanup for a polished finish.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="about">
+    <div class="wrap about">
+      <h2>Story first.<br>Every frame <em style="color:var(--accent)">counts.</em></h2>
+      <div>
+        <p id="aboutBio"></p>
+        <div class="stats">
+          <div class="stat"><strong id="statProjects">0</strong><span>Projects</span></div>
+          <div class="stat"><strong id="statClients">0</strong><span>Clients</span></div>
+          <div class="stat"><strong>48h</strong><span>Typical turnaround</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" class="contact">
+    <div class="wrap">
+      <h2>Let's make<br>something <em>great.</em></h2>
+      <p>Tell me about your project — I usually reply within a few hours.</p>
+      <a id="contactBtn" class="btn btn-primary" href="#">Email me</a>
+      <div class="socials" id="socials"></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span id="footerName"></span>
+      <span>Video Editing Portfolio</span>
+    </div>
+  </footer>
+
+  <script src="/common.js"></script>
+  <script>
+    let all = [];
+    let active = 'All';
+
+    function renderGrid() {
+      const list = active === 'All' ? all : all.filter((v) => v.category === active);
+      const grid = $('#grid');
+      grid.innerHTML = list.length
+        ? list.map((v) => videoCard(v)).join('')
+        : `<div class="empty" style="grid-column:1/-1"><h3>Work coming soon</h3><p>New projects are being uploaded.</p></div>`;
+      grid.querySelectorAll('.card').forEach((c) => c.addEventListener('click', () => openPlayer(all.find((v) => v.id === c.dataset.id))));
+      enableHoverPreview(grid);
+      $('#workCount').textContent = `${list.length} project${list.length === 1 ? '' : 's'}`;
+    }
+
+    function renderFilters() {
+      const cats = ['All', ...new Set(all.map((v) => v.category))];
+      $('#filters').innerHTML = cats.length > 2
+        ? cats.map((c) => `<button class="chip ${c === active ? 'active' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')
+        : '';
+      $('#filters').querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => { active = b.dataset.c; renderFilters(); renderGrid(); }));
+    }
+
+    fetch('/api/portfolio').then((r) => r.json()).then(({ profile, videos }) => {
+      all = videos;
+      document.title = `${profile.name} — ${profile.tagline}`;
+      setLogo(profile.name);
+      $('#heroBio').textContent = profile.bio;
+      $('#aboutBio').textContent = profile.bio;
+      $('#footerName').textContent = `© ${new Date().getFullYear()} ${profile.name}`;
+      $('#statProjects').textContent = videos.length;
+      $('#statClients').textContent = new Set(videos.map((v) => v.client).filter(Boolean)).size;
+      if (profile.email) $('#contactBtn').href = `mailto:${profile.email}`;
+      $('#contactBtn').textContent = profile.email || 'Email me';
+
+      const socials = [];
+      if (profile.phone) socials.push(`<a href="https://wa.me/${esc(profile.phone.replace(/\D/g, ''))}" target="_blank" rel="noopener">WhatsApp</a>`);
+      if (profile.instagram) socials.push(`<a href="${esc(profile.instagram)}" target="_blank" rel="noopener">Instagram</a>`);
+      if (profile.youtube) socials.push(`<a href="${esc(profile.youtube)}" target="_blank" rel="noopener">YouTube</a>`);
+      $('#socials').innerHTML = socials.join('');
+
+      const reel = videos.find((v) => v.id === profile.showreelId);
+      if (reel) {
+        $('#showreel').hidden = false;
+        $('#showreelVideo').src = reel.url;
+        if (reel.thumbUrl) $('#showreelVideo').poster = reel.thumbUrl;
+      }
+      renderFilters();
+      renderGrid();
+    });
+  </script>
+</body>
+</html>
